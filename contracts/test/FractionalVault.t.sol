@@ -224,4 +224,67 @@ contract FractionalVaultTest is Test {
         assertEq(usdc.balanceOf(curator), 100e6);
         assertEq(usdc.balanceOf(address(vault)), 0);
     }
+
+    // --- Primary share sale ---------------------------------------------------
+
+    function test_BuyShares_TransfersSharesAndPaysCurator() public {
+        FractionalVault vault = _fractionalise();
+        vm.prank(curator);
+        vault.configureSale(400_000, 2); // 400k shares at 2 USDC-units each
+
+        usdc.mint(alice, 1e6);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), type(uint256).max);
+        vault.buyShares(100_000);
+        vm.stopPrank();
+
+        assertEq(vault.balanceOf(alice), 100_000);
+        assertEq(vault.balanceOf(curator), SHARES - 100_000);
+        assertEq(usdc.balanceOf(curator), 200_000); // 100k * 2
+        assertEq(vault.sharesForSale(), 300_000);
+    }
+
+    function test_BuyShares_BuyerEarnsRevenueProRata() public {
+        FractionalVault vault = _fractionalise();
+        vm.prank(curator);
+        vault.configureSale(SHARES / 2, 1);
+
+        usdc.mint(alice, 1e6);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), type(uint256).max);
+        vault.buyShares(SHARES / 2); // alice now holds 50%
+        vm.stopPrank();
+
+        _distribute(vault, 100e6);
+        // Revenue earned only from the moment alice held shares — 50/50 split.
+        assertEq(vault.withdrawableRevenueOf(alice), 50e6);
+        assertEq(vault.withdrawableRevenueOf(curator), 50e6);
+    }
+
+    function test_ConfigureSale_OnlyCurator() public {
+        FractionalVault vault = _fractionalise();
+        vm.prank(alice);
+        vm.expectRevert("not curator");
+        vault.configureSale(100, 1);
+    }
+
+    function test_BuyShares_RevertWhenExceedsAllocation() public {
+        FractionalVault vault = _fractionalise();
+        vm.prank(curator);
+        vault.configureSale(100, 1);
+
+        usdc.mint(alice, 1e6);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), type(uint256).max);
+        vm.expectRevert("exceeds allocation");
+        vault.buyShares(101);
+        vm.stopPrank();
+    }
+
+    function test_BuyShares_RevertWhenNotForSale() public {
+        FractionalVault vault = _fractionalise();
+        vm.prank(alice);
+        vm.expectRevert("not for sale");
+        vault.buyShares(1);
+    }
 }

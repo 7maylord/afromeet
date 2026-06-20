@@ -31,6 +31,12 @@ contract FractionalVault is ERC20, IERC721Receiver, ReentrancyGuard {
     /// @notice True once the NFT has been redeemed and the vault dissolved.
     bool public redeemed;
 
+    // --- Primary share sale ---------------------------------------------------
+    /// @notice Price in revenueToken (USDC, 6dp) per share unit, set by the curator.
+    uint256 public saleSharePrice;
+    /// @notice Remaining shares the curator has offered for primary sale.
+    uint256 public sharesForSale;
+
     // --- Revenue accounting ---------------------------------------------------
     uint256 internal magnifiedRevenuePerShare; // cumulative revenue per share, scaled by MAGNITUDE
     uint256 internal accountedRevenue; // revenue already folded into the accumulator
@@ -41,6 +47,8 @@ contract FractionalVault is ERC20, IERC721Receiver, ReentrancyGuard {
     event RevenueAccrued(uint256 amount, uint256 perShare);
     event RevenueClaimed(address indexed holder, uint256 amount);
     event Redeemed(address indexed redeemer);
+    event SaleConfigured(uint256 sharesForSale, uint256 pricePerShare);
+    event SharesPurchased(address indexed buyer, uint256 shares, uint256 cost);
 
     /// @param _curator     Receives the full share supply; the work's creator.
     /// @param _nft         The ERC-721 collection being fractionalised.
@@ -164,6 +172,35 @@ contract FractionalVault is ERC20, IERC721Receiver, ReentrancyGuard {
         if (dust > 0) revenueToken.safeTransfer(msg.sender, dust);
 
         emit Redeemed(msg.sender);
+    }
+
+    // --- Primary share sale ---------------------------------------------------
+
+    /// @notice Curator offers up to `shares` of their holding for sale at `pricePerShare`
+    ///         (USDC per share unit). Fans and the Patron Agent buy from this allocation.
+    function configureSale(uint256 shares, uint256 pricePerShare) external {
+        require(msg.sender == curator, "not curator");
+        require(!redeemed, "redeemed");
+        sharesForSale = shares;
+        saleSharePrice = pricePerShare;
+        emit SaleConfigured(shares, pricePerShare);
+    }
+
+    /// @notice Buy `shareAmount` shares from the curator's sale allocation, paying USDC to the
+    ///         curator. The buyer immediately becomes a pro-rata revenue holder.
+    function buyShares(uint256 shareAmount) external nonReentrant {
+        require(!redeemed, "redeemed");
+        require(saleSharePrice > 0 && shareAmount > 0, "not for sale");
+        require(shareAmount <= sharesForSale, "exceeds allocation");
+        require(balanceOf(curator) >= shareAmount, "curator lacks shares");
+
+        uint256 cost = shareAmount * saleSharePrice;
+        sharesForSale -= shareAmount; // effects before interactions
+
+        revenueToken.safeTransferFrom(msg.sender, curator, cost);
+        _transfer(curator, msg.sender, shareAmount);
+
+        emit SharesPurchased(msg.sender, shareAmount, cost);
     }
 
     // --- ERC-721 receiver -----------------------------------------------------

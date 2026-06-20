@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {CreatorVibeToken} from "./CreatorVibeToken.sol";
+import {DAOTreasury} from "./DAOTreasury.sol";
+import {CreatorDAOFactory} from "./CreatorDAOFactory.sol";
+
+/// @title AfroMeetNFT
+/// @notice Main ERC-721 contract for creative works (music, video, writing, artwork, photography).
+///         The first mint by a creator auto-creates their ecosystem — governance token, DAO, and
+///         treasury — and every mint distributes a fixed CreatorVibeToken reward.
+/// @dev    Each work is a unique ERC-721 token; editions are separate tokenIds that share a work's
+///         off-chain config. Secondary-sale royalties and the 2% cultural cut are handled by the
+///         marketplace, not here.
+contract AfroMeetNFT is ERC721URIStorage, ReentrancyGuard {
+    struct Ecosystem {
+        address token;
+        address dao;
+        address treasury;
+        bool exists;
+    }
+
+    /// @notice CreatorVibeTokens minted to the creator on each work mint.
+    uint256 public constant CREATOR_MINT_REWARD = 100e18;
+
+    IERC20 public immutable usdc;
+    /// @notice External factory that deploys the per-creator Governor (kept out of this contract
+    ///         to stay under the EIP-170 size limit).
+    CreatorDAOFactory public immutable daoFactory;
+
+    uint256 public nextTokenId;
+    mapping(address creator => Ecosystem) public ecosystems;
+    mapping(uint256 tokenId => address creator) public creatorOf;
+
+    event EcosystemCreated(address indexed creator, address token, address dao, address treasury);
+    event WorkMinted(uint256 indexed tokenId, address indexed creator, string uri);
+
+    constructor(IERC20 usdc_, CreatorDAOFactory daoFactory_) ERC721("AfroMeet Work", "AFRO") {
+        require(address(usdc_) != address(0), "usdc=0");
+        require(address(daoFactory_) != address(0), "daoFactory=0");
+        usdc = usdc_;
+        daoFactory = daoFactory_;
+    }
+
+    /// @notice Mint a new creative work. The caller is the creator; the work mints to them.
+    function mintWork(string calldata uri) external nonReentrant returns (uint256 tokenId) {
+        address creator = msg.sender;
+        if (!ecosystems[creator].exists) {
+            _createCreatorEcosystem(creator);
+        }
+
+        tokenId = ++nextTokenId;
+        creatorOf[tokenId] = creator;
+        _safeMint(creator, tokenId);
+        _setTokenURI(tokenId, uri);
+
+        CreatorVibeToken(ecosystems[creator].token).distributeTokens(
+            creator, CREATOR_MINT_REWARD, "NFT_MINT_CREATOR"
+        );
+
+        emit WorkMinted(tokenId, creator, uri);
+    }
+
+    function _createCreatorEcosystem(address creator) internal {
+        CreatorVibeToken token = new CreatorVibeToken("Creator Vibe Token", "VIBE", address(this));
+        address dao = daoFactory.createDAO(token);
+        DAOTreasury treasury = new DAOTreasury(usdc, dao);
+
+        ecosystems[creator] = Ecosystem({
+            token: address(token),
+            dao: dao,
+            treasury: address(treasury),
+            exists: true
+        });
+
+        emit EcosystemCreated(creator, address(token), dao, address(treasury));
+    }
+
+    function ecosystemOf(address creator) external view returns (Ecosystem memory) {
+        return ecosystems[creator];
+    }
+
+    function treasuryOf(address creator) external view returns (address) {
+        return ecosystems[creator].treasury;
+    }
+}
