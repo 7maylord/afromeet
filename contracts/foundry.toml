@@ -2,5 +2,12 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+optimizer = true
+optimizer_runs = 1
+via_ir = true
+
+# Resolves ${ARC_RPC_URL} from contracts/.env, so deploy is: --rpc-url arc
+[rpc_endpoints]
+arc = "${ARC_RPC_URL}"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

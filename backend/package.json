@@ -20,9 +20,14 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
+    "@circle-fin/developer-controlled-wallets": "^10.6.0",
     "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^6.1.3",
+    "ethers": "^6.17.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
