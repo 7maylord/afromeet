@@ -11,6 +11,8 @@ export interface CandidateBrief {
   /** Whether the work is fractionalised with shares for sale. */
   sharesAvailable: boolean;
   pricePerShareUsdc: number;
+  /** Optional external research bought via an x402 service (RFB-01). */
+  research?: string;
 }
 
 export interface PatronDecision {
@@ -55,6 +57,7 @@ Work:
 - content: ${candidate.contentUri}
 - on-chain access revenue so far: $${candidate.accessRevenueUsdc.toFixed(4)} USDC
 - shares for sale: ${candidate.sharesAvailable ? `yes, $${candidate.pricePerShareUsdc} per share` : 'no'}
+${candidate.research ? `- external research: ${candidate.research}` : ''}
 
 Remaining budget: $${remainingBudgetUsdc.toFixed(2)} USDC. Max per work: $${maxPerWork}.
 Favour creators with revenue momentum and room to grow. Only back works with shares for sale.

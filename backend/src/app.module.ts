@@ -7,6 +7,7 @@ import { BlockchainModule } from './blockchain/blockchain.module';
 import { CircleModule } from './circle/circle.module';
 import { AccessModule } from './access/access.module';
 import { AgentModule } from './agent/agent.module';
+import { ServicesModule } from './services/services.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AgentModule } from './agent/agent.module';
     ScheduleModule.forRoot(),
     BlockchainModule,
     CircleModule,
+    ServicesModule,
     AccessModule,
     AgentModule,
   ],

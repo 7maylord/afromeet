@@ -66,6 +66,18 @@ Put `walletId` in `CIRCLE_WALLET_ID`, fund the returned address with testnet USD
 | POST | `/agent/run` | Trigger one autonomous pass |
 | POST | `/agent/wallet/provision` | One-time SDK wallet provisioning |
 | POST | `/agent/metadata` | Update the agent's ERC-8004 metadata URI |
+| GET | `/services/search?q=&category=` | Search the x402 paid-API marketplace |
+| GET | `/services/inspect?url=` | Inspect a service (pricing, schema, health) |
+| POST | `/services/pay` | Pay an x402 endpoint from the agent BASE wallet |
+
+## x402 services leg (RFB-01)
+
+The agent can autonomously discover, evaluate, and pay for **external** paid APIs via Circle's x402
+marketplace (`ServicesService` wraps the `circle services` CLI). During a run it buys research to
+inform each evaluation. Defaults to **Base Sepolia** (`SERVICES_CHAIN=BASE-SEPOLIA`) so it spends
+**free testnet USDC** — fund the CLI agent wallet from a Base Sepolia faucet. Set `SERVICES_CHAIN=BASE`
+for the mainnet directory (real USDC, more web-research services). Every payment is capped by
+`SERVICES_MAX_USDC`; leave `CIRCLE_SERVICES_WALLET` empty to disable the leg.
 
 ## The Patron Agent
 
@@ -73,6 +85,6 @@ Put `walletId` in `CIRCLE_WALLET_ID`, fund the returned address with testnet USD
 
 ## Wallets (Arc Testnet)
 
-- On-chain signer (Circle SDK): `0xf99337df8acbdce3221372ea41610d38b54ca33f`
-- x402 services (Circle CLI): `0xde4e3db5135ce706931fb19cfbe53df30ad0100d`
+- On-chain signer (Circle SDK, Arc): `0xf99337df8acbdce3221372ea41610d38b54ca33f`
+- x402 services (Circle CLI, **Base Sepolia**, free testnet USDC): `0xde4e3db5135ce706931fb19cfbe53df30ad0100d`
 - ERC-8004 agent id: `839408`

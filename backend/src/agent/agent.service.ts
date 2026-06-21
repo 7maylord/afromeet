@@ -5,6 +5,7 @@ import { ethers } from 'ethers';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { WalletsService } from '../circle/wallets.service';
 import { Erc8004Service } from '../circle/erc8004.service';
+import { ServicesService } from '../services/services.service';
 import { CandidateBrief, DecisionEngineService } from './decision-engine.service';
 
 export interface RunSummary {
@@ -29,6 +30,7 @@ export class AgentService {
     private readonly wallets: WalletsService,
     private readonly erc8004: Erc8004Service,
     private readonly decision: DecisionEngineService,
+    private readonly services: ServicesService,
     private readonly config: ConfigService,
   ) {}
 
@@ -58,6 +60,10 @@ export class AgentService {
       for (const c of candidates.slice(0, limit)) {
         await this.sample(c, agent);
         summary.sampled++;
+
+        // RFB-01: autonomously buy external research via an x402 service to inform the decision.
+        const research = await this.services.research(`West African creator work ${c.contentUri}`);
+        if (research) c.research = JSON.stringify(research).slice(0, 1200);
 
         const decision = await this.decision.evaluate(c, budget);
         if (!decision.back || decision.score < minScore) {
