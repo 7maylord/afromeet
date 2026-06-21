@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
-const USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
+const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x3600000000000000000000000000000000000000';
 
 interface WorkItem {
   id: string;

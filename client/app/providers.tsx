@@ -14,7 +14,7 @@ export const arcTestnet = {
   },
   rpcUrls: {
     default: {
-      http: ['https://testnet.arc.canteen.dev'],
+      http: [process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_8a4be899b9561216f7e12003014260df2d070beec86b3207438f8360019cfaa3'],
     },
   },
   blockExplorers: {

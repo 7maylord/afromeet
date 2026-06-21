@@ -31,7 +31,7 @@ export default function CreatorDashboard() {
   });
 
   const [activeTab, setActiveTab] = useState<'created' | 'owned' | 'memberships'>('created');
-  const userAddress = user?.wallet?.address || '0xef0ee06ebfb7536dfce6db0c83aa460ef3ed8322';
+  const userAddress = user?.wallet?.address || process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS || '0xef0ee06ebfb7536dfce6db0c83aa460ef3ed8322';
 
   // Fetch earnings from backend
   useEffect(() => {

@@ -14,8 +14,8 @@ import {
   Percent
 } from 'lucide-react';
 
-const AFROMEET_NFT_ADDRESS = '0xef0ee06ebfb7536dfce6db0c83aa460ef3ed8322';
-const SPLIT_RESOLVER_ADDRESS = '0x49fa30f9be0158ce135fa42d390ad4664362ff9a';
+const AFROMEET_NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS || '0xef0ee06ebfb7536dfce6db0c83aa460ef3ed8322';
+const SPLIT_RESOLVER_ADDRESS = process.env.NEXT_PUBLIC_SPLIT_RESOLVER_ADDRESS || '0x49fa30f9be0158ce135fa42d390ad4664362ff9a';
 
 interface SplitRecipient {
   address: string;

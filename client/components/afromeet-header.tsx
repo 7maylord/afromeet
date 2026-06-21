@@ -7,8 +7,8 @@ import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { Wallet, LogOut, Search, RefreshCw } from 'lucide-react';
 
-const ARC_RPC_URL = 'https://testnet.arc.canteen.dev';
-const USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
+const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_8a4be899b9561216f7e12003014260df2d070beec86b3207438f8360019cfaa3';
+const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x3600000000000000000000000000000000000000';
 
 export default function AfroMeetHeader() {
   const { logout, user } = usePrivy();

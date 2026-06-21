@@ -35,6 +35,14 @@ export default () => ({
     apiKey: process.env.ANTHROPIC_API_KEY,
   },
 
+  // x402 services marketplace (Circle CLI). Defaults to Base Sepolia (testnet USDC); set
+  // SERVICES_CHAIN=BASE for the mainnet directory (real USDC, more web-research services).
+  services: {
+    walletAddress: process.env.CIRCLE_SERVICES_WALLET, // CLI agent wallet; empty disables the leg
+    chain: process.env.SERVICES_CHAIN ?? 'BASE-SEPOLIA',
+    maxUsdc: parseFloat(process.env.SERVICES_MAX_USDC ?? '0.05'),
+  },
+
   // Patron Agent parameters.
   agent: {
     budgetUsdc: parseFloat(process.env.AGENT_BUDGET_USDC ?? '10'),
@@ -47,9 +55,9 @@ export default () => ({
 
   // ERC-8004 agent identity + reputation (registries live on Arc Testnet).
   erc8004: {
-    identityRegistry: '0x8004A818BFB912233c491871b3d84c89A494BD9e',
-    reputationRegistry: '0x8004B663056A597Dffe9eCcC1965A193B7388713',
-    validationRegistry: '0x8004Cb1BF31DAf7788923b405b754f57acEB4272',
+    identityRegistry: process.env.ERC8004_IDENTITY_REGISTRY_ADDRESS ?? '0x8004A818BFB912233c491871b3d84c89A494BD9e',
+    reputationRegistry: process.env.ERC8004_REPUTATION_REGISTRY_ADDRESS ?? '0x8004B663056A597Dffe9eCcC1965A193B7388713',
+    validationRegistry: process.env.ERC8004_VALIDATION_REGISTRY_ADDRESS ?? '0x8004Cb1BF31DAf7788923b405b754f57acEB4272',
     agentId: process.env.ERC8004_AGENT_ID, // set after first registration
     metadataUri: process.env.ERC8004_METADATA_URI ?? 'ipfs://REPLACE_WITH_AGENT_METADATA',
   },
