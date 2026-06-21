@@ -1,0 +1,63 @@
+{
+  "name": "AfroMeet Patron Agent",
+  "description": "An autonomous patron of West African creators. It discovers new music, film, writing, art and photography on AfroMeet, samples works by paying per-access nanopayments via x402, evaluates them using on-chain access-revenue momentum, and backs promising creators by buying fractional shares and streaming — all settled in USDC on Arc.",
+  "image": "https://gold-perfect-rook-553.mypinata.cloud/ipfs/bafybeihegsoz6rseanzl7a33ewzuly2avum3356ry5r6qi3villzv7c5im",
+  "url": "https://afromeet-x.vercel.app",
+  "version": "1.0.0",
+  "type": "autonomous-agent",
+  "protocol": "ERC-8004",
+  "wallet": {
+    "address": "0xf99337df8acbdce3221372ea41610d38b54ca33f",
+    "chain": "arc-testnet",
+    "chainId": 5042002
+  },
+  "registration": {
+    "standard": "ERC-8004",
+    "identityRegistry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    "reputationRegistry": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    "agentId": "839408",
+    "chainId": 5042002
+  },
+  "provider": {
+    "name": "AfroMeet",
+    "description": "Decentralised platform for West African creatives to own, monetise and govern their work onchain."
+  },
+  "skills": [
+    {
+      "id": "discover-creators",
+      "name": "Discover creators",
+      "description": "Enumerates active creative works on AfroMeet across music, video, writing, artwork and photography."
+    },
+    {
+      "id": "sample-x402",
+      "name": "Sample via nanopayments",
+      "description": "Pays per-access discovery nanopayments (x402 / Circle Gateway) to sample a work before deciding."
+    },
+    {
+      "id": "evaluate-works",
+      "name": "Evaluate works",
+      "description": "Scores creators from sampled content and on-chain access-revenue momentum."
+    },
+    {
+      "id": "back-creators",
+      "name": "Back creators",
+      "description": "Buys fractional shares of promising works and streams them, within a USDC budget, then rebalances on revenue signals."
+    }
+  ],
+  "capabilities": {
+    "payments": [
+      "x402",
+      "circle-gateway",
+      "usdc"
+    ],
+    "autonomy": [
+      "service-discovery",
+      "budget-allocation",
+      "cost-benefit-analysis"
+    ],
+    "settlement": "arc-testnet"
+  },
+  "trustModels": [
+    "reputation"
+  ]
+}
