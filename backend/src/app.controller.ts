@@ -1,7 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BlockchainService } from './blockchain/blockchain.service';
 import { WalletsService } from './circle/wallets.service';
 
+@ApiTags('health')
 @Controller()
 export class AppController {
   constructor(
@@ -9,7 +11,7 @@ export class AppController {
     private readonly wallets: WalletsService,
   ) {}
 
-  /** Liveness + proof the Arc connection and Circle wallet are wired. */
+  @ApiOperation({ summary: 'Liveness + proof the Arc connection and Circle wallet are wired' })
   @Get('health')
   async health() {
     const provider = this.blockchain.getProvider();

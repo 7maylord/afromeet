@@ -5,6 +5,7 @@ import { WalletsService } from './wallets.service';
 
 const IDENTITY_ABI = [
   'function register(string metadataURI)',
+  'function setAgentURI(uint256 agentId, string uri)',
   'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
 ];
 
@@ -96,6 +97,21 @@ export class Erc8004Service implements OnModuleInit {
 
   getAgentId(): bigint | null {
     return this.agentId;
+  }
+
+  /// Update the agent's on-chain metadata URI (e.g. after uploading the agent card to IPFS).
+  /// Signed by the agent-NFT owner (the Circle wallet that registered it).
+  async updateMetadata(uri: string): Promise<string> {
+    if (this.agentId === null) throw new Error('agent not registered yet');
+    if (!this.wallets.isReady()) throw new Error('Circle wallet not ready');
+    const calldata = new ethers.Interface(IDENTITY_ABI).encodeFunctionData('setAgentURI', [
+      this.agentId,
+      uri,
+    ]);
+    const txId = await this.wallets.sendContractCall(this.identityRegistry, calldata);
+    const txHash = await this.wallets.waitForTransaction(txId);
+    this.logger.log(`Agent ${this.agentId} metadata updated → ${uri}`);
+    return txHash;
   }
 
   /**
