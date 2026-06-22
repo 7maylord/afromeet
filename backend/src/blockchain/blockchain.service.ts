@@ -14,6 +14,7 @@ import {
 export interface AccessConfig {
   pricePerAccess: bigint;
   discoveryPrice: bigint;
+  ratePerSecond: bigint; // TIMED: USDC per second
   mode: number; // 0 = TIMED, 1 = DISCRETE
   minAccessSeconds: bigint;
   daoTreasury: string;
@@ -77,6 +78,7 @@ export class BlockchainService implements OnModuleInit {
     return {
       pricePerAccess: r.pricePerAccess,
       discoveryPrice: r.discoveryPrice,
+      ratePerSecond: r.ratePerSecond,
       mode: Number(r.mode),
       minAccessSeconds: r.minAccessSeconds,
       daoTreasury: r.daoTreasury,
@@ -159,8 +161,11 @@ export class BlockchainService implements OnModuleInit {
     ]);
   }
 
-  encodeSettle(sessionId: string): string {
-    return new ethers.Interface(ACCESS_ESCROW_ABI).encodeFunctionData('settle', [sessionId]);
+  encodeSettle(sessionId: string, elapsedSeconds: number): string {
+    return new ethers.Interface(ACCESS_ESCROW_ABI).encodeFunctionData('settle', [
+      sessionId,
+      elapsedSeconds,
+    ]);
   }
 
   encodeUsdcApprove(spender: string, amount: bigint): string {

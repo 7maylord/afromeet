@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AccessService } from './access.service';
 import { NanopaymentGuard } from './nanopayment.guard';
@@ -7,6 +7,12 @@ import { NanopaymentGuard } from './nanopayment.guard';
 @Controller('access')
 export class AccessController {
   constructor(private readonly access: AccessService) {}
+
+  @ApiOperation({ summary: 'The public catalogue — every active work on-chain with pricing + URI' })
+  @Get('catalogue')
+  catalogue() {
+    return this.access.catalogue();
+  }
 
   @ApiOperation({ summary: 'Public access config for a work (rate, discovery price, mode, creator)' })
   @Get('config/:tokenId')
@@ -20,10 +26,18 @@ export class AccessController {
     return this.access.openSession(body.tokenId, body.listener, body.authorisedUsdc);
   }
 
-  @ApiOperation({ summary: 'Operator settles a session (per-access fee → splits + 1% DAO)' })
+  @ApiOperation({ summary: 'Live accrued cost after N seconds of playback (the ticking meter)' })
+  @Get('session/heartbeat')
+  heartbeat(@Query('tokenId') tokenId: string, @Query('elapsed') elapsed: string) {
+    return this.access.heartbeat(tokenId, Number(elapsed ?? 0));
+  }
+
+  @ApiOperation({
+    summary: 'Operator settles a session for metered seconds (TIMED: elapsed × rate, capped)',
+  })
   @Post('session/settle')
-  settle(@Body() body: { sessionId: string }) {
-    return this.access.settle(body.sessionId);
+  settle(@Body() body: { sessionId: string; elapsedSeconds?: number }) {
+    return this.access.settle(body.sessionId, body.elapsedSeconds ?? 0);
   }
 
   @ApiOperation({

@@ -12,6 +12,35 @@ export class AccessService {
     private readonly config: ConfigService,
   ) {}
 
+  /** The public catalogue: every active work on-chain with its pricing + tokenURI. */
+  async catalogue() {
+    const next = Number(await this.blockchain.getNextTokenId());
+    const works: unknown[] = [];
+    for (let id = 1; id <= next; id++) {
+      try {
+        const cfg = await this.blockchain.getAccessConfig(id);
+        if (!cfg.active) continue;
+        const [creator, uri] = await Promise.all([
+          this.blockchain.getCreator(id),
+          this.blockchain.getTokenUri(id),
+        ]);
+        works.push({
+          id: id.toString(),
+          creator,
+          mode: cfg.mode === 0 ? 'TIMED' : 'DISCRETE',
+          pricePerAccessUsdc: Number(cfg.pricePerAccess) / 1e6,
+          discoveryPriceUsdc: Number(cfg.discoveryPrice) / 1e6,
+          ratePerSecondUsdc: Number(cfg.ratePerSecond) / 1e6,
+          minAccessSeconds: Number(cfg.minAccessSeconds),
+          tokenURI: uri,
+        });
+      } catch {
+        /* skip unreadable token */
+      }
+    }
+    return works;
+  }
+
   /** Public access config for a work (rate, discovery price, mode, creator). */
   async getConfig(tokenId: string) {
     const [cfg, creator] = await Promise.all([
@@ -23,10 +52,24 @@ export class AccessService {
       creator,
       pricePerAccess: cfg.pricePerAccess.toString(),
       discoveryPrice: cfg.discoveryPrice.toString(),
+      ratePerSecond: cfg.ratePerSecond.toString(),
       mode: cfg.mode === 0 ? 'TIMED' : 'DISCRETE',
       minAccessSeconds: Number(cfg.minAccessSeconds),
       daoTreasury: cfg.daoTreasury,
       active: cfg.active,
+    };
+  }
+
+  /** Live accrued cost for a TIMED work after `elapsedSeconds` of playback (for the ticking meter). */
+  async heartbeat(tokenId: string, elapsedSeconds: number) {
+    const cfg = await this.blockchain.getAccessConfig(tokenId);
+    const accruedRaw = BigInt(Math.max(0, Math.floor(elapsedSeconds))) * cfg.ratePerSecond;
+    return {
+      tokenId,
+      elapsedSeconds,
+      ratePerSecondUsdc: Number(cfg.ratePerSecond) / 1e6,
+      accruedUsdc: Number(accruedRaw) / 1e6,
+      belowMin: elapsedSeconds < Number(cfg.minAccessSeconds),
     };
   }
 
@@ -55,13 +98,17 @@ export class AccessService {
     return { sessionId, txHash, authorised: authorised.toString() };
   }
 
-  /** Operator settles a session — distributes the per-access fee per SplitResolver + 1% DAO cut. */
-  async settle(sessionId: string) {
+  /**
+   * Operator settles a session for the metered playback duration. TIMED works are charged
+   * `elapsedSeconds × ratePerSecond` (capped at the budget); DISCRETE works ignore elapsedSeconds.
+   * Distributes per SplitResolver + 1% DAO cut.
+   */
+  async settle(sessionId: string, elapsedSeconds = 0) {
     const escrow = this.escrowAddress();
-    const calldata = this.blockchain.encodeSettle(sessionId);
+    const calldata = this.blockchain.encodeSettle(sessionId, Math.max(0, Math.floor(elapsedSeconds)));
     const txId = await this.wallets.sendContractCall(escrow, calldata);
     const txHash = await this.wallets.waitForTransaction(txId);
-    return { sessionId, txHash };
+    return { sessionId, elapsedSeconds, txHash };
   }
 
   private escrowAddress(): string {

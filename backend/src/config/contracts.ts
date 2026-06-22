@@ -21,13 +21,13 @@ export const AFROMEET_NFT_ABI = [
 ];
 
 export const ACCESS_REGISTRY_ABI = [
-  'function getConfig(uint256 tokenId) view returns (tuple(uint256 pricePerAccess, uint256 discoveryPrice, uint8 mode, uint256 minAccessSeconds, address daoTreasury, bool active))',
-  'function setConfig(uint256 tokenId, uint256 pricePerAccess, uint256 discoveryPrice, uint8 mode, uint256 minAccessSeconds)',
+  'function getConfig(uint256 tokenId) view returns (tuple(uint256 pricePerAccess, uint256 discoveryPrice, uint256 ratePerSecond, uint8 mode, uint256 minAccessSeconds, address daoTreasury, bool active))',
+  'function setConfig(uint256 tokenId, uint256 pricePerAccess, uint256 discoveryPrice, uint256 ratePerSecond, uint8 mode, uint256 minAccessSeconds)',
 ];
 
 export const ACCESS_ESCROW_ABI = [
   'function openSession(bytes32 sessionId, address listener, uint256 tokenId, uint256 authorisedAmount)',
-  'function settle(bytes32 sessionId)',
+  'function settle(bytes32 sessionId, uint256 elapsedSeconds)',
   'function sessions(bytes32 sessionId) view returns (address listener, uint256 tokenId, uint256 authorisedAmount, bool settled)',
 ];
 
