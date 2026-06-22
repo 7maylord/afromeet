@@ -29,6 +29,12 @@ export class AgentController {
     return this.agent.runOnce();
   }
 
+  @ApiOperation({ summary: "What the AfroMeet Agent is enjoying — its recommendation feed" })
+  @Get('picks')
+  picks() {
+    return { agentId: this.erc8004.getAgentId()?.toString() ?? null, picks: this.agent.getPicks() };
+  }
+
   /**
    * One-time: provision the developer-controlled SDK wallet on Arc. Run after setting
    * CIRCLE_API_KEY + CIRCLE_ENTITY_SECRET; then put the returned walletId in CIRCLE_WALLET_ID

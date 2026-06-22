@@ -8,6 +8,7 @@ import { CircleModule } from './circle/circle.module';
 import { AccessModule } from './access/access.module';
 import { AgentModule } from './agent/agent.module';
 import { ServicesModule } from './services/services.module';
+import { WorksModule } from './works/works.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ServicesModule } from './services/services.module';
     ServicesModule,
     AccessModule,
     AgentModule,
+    WorksModule,
   ],
   controllers: [AppController],
   providers: [],

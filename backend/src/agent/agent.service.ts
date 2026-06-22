@@ -8,9 +8,23 @@ import { Erc8004Service } from '../circle/erc8004.service';
 import { ServicesService } from '../services/services.service';
 import { CandidateBrief, DecisionEngineService } from './decision-engine.service';
 
+/** A work the agent liked enough to pay to access — the unit of the public recommendation feed. */
+export interface Pick {
+  tokenId: string;
+  creator: string;
+  contentUri: string;
+  score: number;
+  note: string; // why the agent liked it (one line, for the feed)
+  paidUsdc: number; // what the agent paid to access it
+  accessTx: string | null; // on-chain proof it actually paid
+  backed: boolean; // did it also buy fractional shares?
+  at: string; // ISO timestamp
+}
+
 export interface RunSummary {
   budgetUsdc: number;
   sampled: number;
+  liked: Pick[];
   backed: { tokenId: string; allocationUsdc: number; shares: string; reason: string }[];
   skipped: string[];
 }
@@ -24,6 +38,13 @@ export interface RunSummary {
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private running = false;
+  /** In-memory recommendation feed: the works the agent has liked, most recent first. */
+  private readonly picks: Pick[] = [];
+
+  /** "What the AfroMeet Agent is enjoying" — the public recommendation feed. */
+  getPicks(limit = 20): Pick[] {
+    return this.picks.slice(0, limit);
+  }
 
   constructor(
     private readonly blockchain: BlockchainService,
@@ -47,7 +68,7 @@ export class AgentService {
     if (!this.decision.isReady()) throw new Error('ANTHROPIC_API_KEY not set');
 
     this.running = true;
-    const summary: RunSummary = { budgetUsdc: 0, sampled: 0, backed: [], skipped: [] };
+    const summary: RunSummary = { budgetUsdc: 0, sampled: 0, liked: [], backed: [], skipped: [] };
     try {
       const agent = this.wallets.getAddress()!;
       let budget = Number(await this.blockchain.usdcBalanceOf(agent)) / 1e6;
@@ -58,7 +79,8 @@ export class AgentService {
       const minScore = this.config.get<number>('agent.minScore')!;
 
       for (const c of candidates.slice(0, limit)) {
-        await this.sample(c, agent);
+        // Pay to access the work (discovery nanopayment) — this is the agent consuming it.
+        const access = await this.sample(c, agent);
         summary.sampled++;
 
         // RFB-01: autonomously buy external research via an x402 service to inform the decision.
@@ -66,29 +88,49 @@ export class AgentService {
         if (research) c.research = JSON.stringify(research).slice(0, 1200);
 
         const decision = await this.decision.evaluate(c, budget);
-        if (!decision.back || decision.score < minScore) {
+        if (decision.score < minScore) {
           summary.skipped.push(`${c.tokenId}: ${decision.reason}`);
           continue;
         }
 
-        const shares = await this.backWork(c, decision.allocationUsdc, agent);
-        if (shares === null) {
-          summary.skipped.push(`${c.tokenId}: buy failed`);
-          continue;
+        // The agent likes it → high-conviction works are also backed with fractional shares.
+        let backed = false;
+        if (decision.back && decision.allocationUsdc > 0) {
+          const shares = await this.backWork(c, decision.allocationUsdc, agent);
+          if (shares !== null) {
+            backed = true;
+            budget -= decision.allocationUsdc;
+            summary.backed.push({
+              tokenId: c.tokenId,
+              allocationUsdc: decision.allocationUsdc,
+              shares: shares.toString(),
+              reason: decision.reason,
+            });
+            await this.erc8004.recordReputation(
+              Math.round(decision.score * 100),
+              'backed_creator',
+              `token_${c.tokenId}`,
+            );
+          }
         }
-        budget -= decision.allocationUsdc;
-        summary.backed.push({
+
+        // Record the like in the public recommendation feed.
+        const pick: Pick = {
           tokenId: c.tokenId,
-          allocationUsdc: decision.allocationUsdc,
-          shares: shares.toString(),
-          reason: decision.reason,
-        });
-        await this.erc8004.recordReputation(
-          Math.round(decision.score * 100),
-          'backed_creator',
-          `token_${c.tokenId}`,
-        );
+          creator: c.creator,
+          contentUri: c.contentUri,
+          score: decision.score,
+          note: decision.reason,
+          paidUsdc: access?.amountUsdc ?? 0,
+          accessTx: access?.txHash ?? null,
+          backed,
+          at: new Date().toISOString(),
+        };
+        this.picks.unshift(pick);
+        summary.liked.push(pick);
       }
+
+      if (this.picks.length > 100) this.picks.length = 100; // cap the feed
     } finally {
       this.running = false;
     }
@@ -138,19 +180,24 @@ export class AgentService {
     return out;
   }
 
-  /** Pay the discovery nanopayment straight to the creator (skips if free). */
-  private async sample(c: CandidateBrief, agent: string): Promise<void> {
+  /** Pay the discovery nanopayment straight to the creator (skips if free). Returns the proof. */
+  private async sample(
+    c: CandidateBrief,
+    agent: string,
+  ): Promise<{ txHash: string; amountUsdc: number } | null> {
     const cfg = await this.blockchain.getAccessConfig(c.tokenId);
-    if (cfg.discoveryPrice === 0n) return;
-    if ((await this.blockchain.usdcBalanceOf(agent)) < cfg.discoveryPrice) return;
+    if (cfg.discoveryPrice === 0n) return null;
+    if ((await this.blockchain.usdcBalanceOf(agent)) < cfg.discoveryPrice) return null;
 
     const calldata = this.blockchain.encodeUsdcTransfer(c.creator, cfg.discoveryPrice);
     const txId = await this.wallets.sendContractCall(
       this.config.get<string>('contracts.usdc')!,
       calldata,
     );
-    await this.wallets.waitForTransaction(txId);
-    this.logger.log(`Sampled token ${c.tokenId} (paid $${Number(cfg.discoveryPrice) / 1e6})`);
+    const txHash = await this.wallets.waitForTransaction(txId);
+    const amountUsdc = Number(cfg.discoveryPrice) / 1e6;
+    this.logger.log(`Accessed token ${c.tokenId} (paid $${amountUsdc})`);
+    return { txHash, amountUsdc };
   }
 
   /** Approve USDC and buy fractional shares with the allocated budget. Returns shares bought. */
