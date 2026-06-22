@@ -14,10 +14,11 @@ contract AccessRegistry {
     }
 
     struct AccessConfig {
-        uint256 pricePerAccess; // USDC (6 decimals) per qualifying access by a holder
-        uint256 discoveryPrice; // USDC per access by a non-holder
+        uint256 pricePerAccess; // DISCRETE: flat unlock price (USDC, 6 decimals)
+        uint256 discoveryPrice; // USDC per sample by a non-holder (flat, x402)
+        uint256 ratePerSecond; // TIMED: USDC per second of playback — the nanopayment rate
         AccessMode mode;
-        uint256 minAccessSeconds; // applies to TIMED only
+        uint256 minAccessSeconds; // TIMED: skip-gate threshold
         address daoTreasury; // receives 1% of each settlement
         bool active;
     }
@@ -40,17 +41,23 @@ contract AccessRegistry {
         uint256 tokenId,
         uint256 pricePerAccess,
         uint256 discoveryPrice,
+        uint256 ratePerSecond,
         AccessMode mode,
         uint256 minAccessSeconds
     ) external {
         require(msg.sender == nft.creatorOf(tokenId), "not creator");
-        require(pricePerAccess > 0, "price=0");
         if (mode == AccessMode.TIMED) {
+            // Metered per second: needs a positive rate and a skip-gate threshold.
+            require(ratePerSecond > 0, "rate=0");
             require(minAccessSeconds > 0, "minAccess=0");
+        } else {
+            // Discrete unlock (artwork / article): needs a flat price.
+            require(pricePerAccess > 0, "price=0");
         }
         configs[tokenId] = AccessConfig({
             pricePerAccess: pricePerAccess,
             discoveryPrice: discoveryPrice,
+            ratePerSecond: ratePerSecond,
             mode: mode,
             minAccessSeconds: minAccessSeconds,
             daoTreasury: nft.treasuryOf(msg.sender),

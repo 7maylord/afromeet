@@ -60,19 +60,28 @@ contract AccessEscrow is Ownable, ReentrancyGuard {
         emit SessionOpened(sessionId, listener, tokenId, authorisedAmount);
     }
 
-    /// @notice Settle a session: charge the holder rate and distribute it. Operator-only.
-    /// @dev    The TIMED min-duration threshold is enforced by the operator (it only calls settle
-    ///         once met); the contract enforces the economic invariants.
-    function settle(bytes32 sessionId) external onlyOwner nonReentrant {
+    /// @notice Settle a session and distribute the fee. Operator-only.
+    /// @param  elapsedSeconds Metered playback seconds (TIMED works); ignored for DISCRETE.
+    /// @dev    TIMED works are charged per second: `elapsedSeconds * ratePerSecond`, capped at the
+    ///         pre-authorised budget. DISCRETE works are charged a flat unlock price.
+    function settle(bytes32 sessionId, uint256 elapsedSeconds) external onlyOwner nonReentrant {
         Session storage s = sessions[sessionId];
         require(s.listener != address(0), "no session");
         require(!s.settled, "already settled");
 
         AccessRegistry.AccessConfig memory cfg = registry.getConfig(s.tokenId);
         require(cfg.active, "inactive");
-        uint256 price = cfg.pricePerAccess;
-        require(price > 0, "price=0");
-        require(price <= s.authorisedAmount, "exceeds authorised");
+
+        uint256 amount;
+        if (cfg.mode == AccessRegistry.AccessMode.TIMED) {
+            require(elapsedSeconds >= cfg.minAccessSeconds, "below min"); // skip-gate
+            amount = elapsedSeconds * cfg.ratePerSecond;
+            if (amount > s.authorisedAmount) amount = s.authorisedAmount; // never exceed the budget
+        } else {
+            amount = cfg.pricePerAccess;
+            require(amount <= s.authorisedAmount, "exceeds authorised");
+        }
+        require(amount > 0, "amount=0");
 
         SplitResolver.Split[] memory recipients = splits.getSplits(s.tokenId);
         require(recipients.length > 0, "no splits");
@@ -85,18 +94,18 @@ contract AccessEscrow is Ownable, ReentrancyGuard {
         }
 
         // Pull the listener's pre-authorised USDC into the escrow.
-        usdc.safeTransferFrom(s.listener, address(this), price);
+        usdc.safeTransferFrom(s.listener, address(this), amount);
 
-        // 1% to the DAO treasury — only skimmed when one is configured, otherwise the full price
+        // 1% to the DAO treasury — only skimmed when one is configured, otherwise the full amount
         // flows to the split recipients (never left stranded in the escrow).
         uint256 daoCut;
         if (cfg.daoTreasury != address(0)) {
-            daoCut = (price * DAO_BPS) / 10000;
+            daoCut = (amount * DAO_BPS) / 10000;
             if (daoCut > 0) usdc.safeTransfer(cfg.daoTreasury, daoCut);
         }
 
         // Remainder split per basis points; the last recipient absorbs rounding dust.
-        uint256 remainder = price - daoCut;
+        uint256 remainder = amount - daoCut;
         uint256 distributed;
         uint256 last = recipients.length - 1;
         for (uint256 i; i <= last; ++i) {
@@ -106,6 +115,6 @@ contract AccessEscrow is Ownable, ReentrancyGuard {
             usdc.safeTransfer(recipients[i].recipient, amount);
         }
 
-        emit Settled(sessionId, s.tokenId, price, daoCut);
+        emit Settled(sessionId, s.tokenId, amount, daoCut);
     }
 }

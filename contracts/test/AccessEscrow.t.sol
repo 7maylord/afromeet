@@ -24,7 +24,10 @@ contract AccessEscrowTest is Test {
     address treasury; // resolved from the creator's ecosystem in setUp
 
     uint256 tokenId;
-    uint256 constant PRICE = 1_000; // 0.001 USDC at 6 decimals
+    uint256 constant PRICE = 1_000; // session budget (USDC, 6dp)
+    uint256 constant RATE = 100; // USDC per second
+    uint256 constant ELAPSED = 10; // metered seconds → RATE*ELAPSED = 1000 = PRICE
+    uint256 constant MIN_SECONDS = 5; // skip-gate threshold
 
     function setUp() public {
         usdc = new MockUSDC();
@@ -49,7 +52,7 @@ contract AccessEscrowTest is Test {
         splits.setSplits(tokenId, r, bps);
 
         vm.prank(creator);
-        registry.setConfig(tokenId, PRICE, 2 * PRICE, AccessRegistry.AccessMode.TIMED, 30);
+        registry.setConfig(tokenId, PRICE, 2 * PRICE, RATE, AccessRegistry.AccessMode.TIMED, MIN_SECONDS);
 
         // Listener funds + pre-authorises the escrow (models EIP-3009 spend authorisation).
         usdc.mint(listener, 1e6);
@@ -60,7 +63,7 @@ contract AccessEscrowTest is Test {
     function _settle(bytes32 id) internal {
         vm.startPrank(operator);
         escrow.openSession(id, listener, tokenId, PRICE);
-        escrow.settle(id);
+        escrow.settle(id, ELAPSED); // 10s * 100 = 1000
         vm.stopPrank();
     }
 
@@ -86,17 +89,38 @@ contract AccessEscrowTest is Test {
     function test_Settle_RevertOnDoubleSettle() public {
         vm.startPrank(operator);
         escrow.openSession("s1", listener, tokenId, PRICE);
-        escrow.settle("s1");
+        escrow.settle("s1", ELAPSED);
         vm.expectRevert("already settled");
-        escrow.settle("s1");
+        escrow.settle("s1", ELAPSED);
         vm.stopPrank();
     }
 
-    function test_Settle_RevertWhenPriceExceedsAuthorised() public {
+    function test_Settle_PerSecondMetering() public {
+        // Pay for exactly what is consumed: 20s costs 20 * RATE.
         vm.startPrank(operator);
-        escrow.openSession("s1", listener, tokenId, PRICE - 1); // under-authorised
-        vm.expectRevert("exceeds authorised");
-        escrow.settle("s1");
+        escrow.openSession("s1", listener, tokenId, 10_000);
+        escrow.settle("s1", 20);
+        vm.stopPrank();
+        assertEq(
+            usdc.balanceOf(treasury) + usdc.balanceOf(creator) + usdc.balanceOf(producer), 20 * RATE
+        );
+    }
+
+    function test_Settle_CapsAtAuthorisedBudget() public {
+        // 10s * RATE = 1000, but only 500 authorised → the charge is capped at the budget.
+        vm.startPrank(operator);
+        escrow.openSession("s1", listener, tokenId, 500);
+        escrow.settle("s1", ELAPSED);
+        vm.stopPrank();
+        assertEq(usdc.balanceOf(treasury) + usdc.balanceOf(creator) + usdc.balanceOf(producer), 500);
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+    }
+
+    function test_Settle_RevertBelowMinSeconds() public {
+        vm.startPrank(operator);
+        escrow.openSession("s1", listener, tokenId, PRICE);
+        vm.expectRevert("below min");
+        escrow.settle("s1", MIN_SECONDS - 1); // skip-gate
         vm.stopPrank();
     }
 
@@ -109,7 +133,7 @@ contract AccessEscrowTest is Test {
     function test_Settle_RevertWhenNoSession() public {
         vm.prank(operator);
         vm.expectRevert("no session");
-        escrow.settle("missing");
+        escrow.settle("missing", ELAPSED);
     }
 
     function test_Settle_DaoCutGoesToEcosystemTreasury() public {
@@ -124,13 +148,13 @@ contract AccessEscrowTest is Test {
     }
 
     function test_Settle_RoundingDustGoesToLastRecipient() public {
-        // A price that does not divide cleanly by the split exposes dust handling.
+        // A DISCRETE flat price that does not divide cleanly by the split exposes dust handling.
         vm.prank(creator);
-        registry.setConfig(tokenId, 777, 1000, AccessRegistry.AccessMode.DISCRETE, 0);
+        registry.setConfig(tokenId, 777, 1000, 0, AccessRegistry.AccessMode.DISCRETE, 0);
 
         vm.startPrank(operator);
         escrow.openSession("s1", listener, tokenId, 777);
-        escrow.settle("s1");
+        escrow.settle("s1", 0); // elapsed ignored for DISCRETE
         vm.stopPrank();
 
         uint256 price = 777;

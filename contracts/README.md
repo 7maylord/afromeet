@@ -23,7 +23,7 @@ Foundry project for the AfroMeet onchain layer — Solidity 0.8 / OpenZeppelin v
 
 ```bash
 forge build
-forge test          # 63 tests
+forge test          # 66 tests
 forge build --sizes # all contracts under the 24KB EIP-170 limit
 ```
 
@@ -44,14 +44,14 @@ The script deploys in dependency order, wires `SplitResolver`'s escrow, and prin
 
 | Contract | Address |
 | -------- | ------- |
-| AfroMeetNFT | `0xef0eE06EBfB7536DfCe6Db0c83Aa460Ef3eD8322` |
-| CreatorDAOFactory | `0x095677F720ff38d163b77ee31b40909688E3c4C7` |
-| AccessRegistry | `0xa451F452055351dE4745619414FDA08f1175C3a6` |
-| AccessEscrow | `0x6A6B8D57b776B2a0A34809B1F6782f90e6Ba0ffD` |
-| SplitResolver | `0x49fa30F9BE0158cE135fa42D390AD4664362ff9A` |
-| AfroMeetRoyalty | `0x2e42160576AaFB649d61f2BbC1e3106B614ca761` |
-| AfroMeetMarketplace | `0x254E7A6971DfDd5bcD04F7a4A8fc541a35b6bdE2` |
-| FractionalVaultFactory | `0x93B67Ae7c49e57A1c2C1b014F6DB31180699573c` |
+| AfroMeetNFT | `0x9A8c6Df48613265Ea2b90f1e4Dd85eC3Ca9A85DE` |
+| CreatorDAOFactory | `0x8aEE6C72598200E1720300607D6d20812Ec9bc61` |
+| AccessRegistry | `0x5363eACF9b04CAfcD1DDb0dc5365532644A1B46A` |
+| AccessEscrow | `0xB14a5927b20927A8812AC060c00CBE17772CcFA0` |
+| SplitResolver | `0x4cdd345EEFbfFE00F004C64Fe72da6EC667f8852` |
+| AfroMeetRoyalty | `0x3D1A6E616CA3bc7fAb7cc178aF434071ddeAbC4f` |
+| AfroMeetMarketplace | `0x892C2C0eD81f80Ba727af29c7A128A4A2e9d053c` |
+| FractionalVaultFactory | `0xe41e15b91Ae30f3cB4f0193c4ca1f00c82342D8f` |
 
 ## Security notes
 
