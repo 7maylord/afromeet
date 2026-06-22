@@ -10,7 +10,8 @@ import MarketplacePanel from '@/components/marketplace-panel';
 import DaoPanel from '@/components/dao-panel';
 import CreatorDashboard from '@/components/creator-dashboard';
 import AgentMonitor from '@/components/agent-monitor';
-import { 
+import AgentPicks from '@/components/agent-picks';
+import {
   Play, 
   PlusCircle, 
   ShoppingBag, 
@@ -100,12 +101,22 @@ export default function AppHome() {
 
         {/* Tab content view */}
         <main className="flex-1 min-h-[500px]">
-          {activeTab === 'discover' && <MediaPlayer />}
+          {activeTab === 'discover' && (
+            <>
+              <MediaPlayer />
+              <AgentPicks />
+            </>
+          )}
           {activeTab === 'studio' && <MintForm />}
           {activeTab === 'marketplace' && <MarketplacePanel />}
           {activeTab === 'daos' && <DaoPanel />}
           {activeTab === 'dashboard' && <CreatorDashboard />}
-          {activeTab === 'agent' && <AgentMonitor />}
+          {activeTab === 'agent' && (
+            <>
+              <AgentMonitor />
+              <AgentPicks />
+            </>
+          )}
         </main>
       </div>
 

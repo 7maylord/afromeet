@@ -1,6 +1,6 @@
 'use client';
 
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import Image from 'next/image';
 import { useState, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
@@ -22,6 +22,9 @@ import {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x3600000000000000000000000000000000000000';
+const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_ESCROW_ADDRESS || '0xB14a5927b20927A8812AC060c00CBE17772CcFA0';
+const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_8a4be899b9561216f7e12003014260df2d070beec86b3207438f8360019cfaa3';
+const IPFS_GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
 
 interface WorkItem {
   id: string;
@@ -30,6 +33,7 @@ interface WorkItem {
   category: string;
   price: number;
   discoveryPrice: number;
+  ratePerSecondUsdc?: number; // TIMED nanopayment rate (fallback if not on-chain yet)
   mode: 'TIMED' | 'DISCRETE';
   minAccessSeconds: number;
   url?: string;
@@ -44,6 +48,7 @@ const DEFAULT_WORKS: WorkItem[] = [
     category: 'music',
     price: 0.001,
     discoveryPrice: 0.002,
+    ratePerSecondUsdc: 0.0001,
     mode: 'TIMED',
     minAccessSeconds: 30,
     url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
@@ -78,12 +83,43 @@ Anansi realized his son was right. Angered that a child possessed wisdom he had 
 
 export default function MediaPlayer() {
   const { user, authenticated } = usePrivy();
+  const { wallets } = useWallets();
   const [works, setWorks] = useState<WorkItem[]>(DEFAULT_WORKS);
   const [selectedWork, setSelectedWork] = useState<WorkItem>(DEFAULT_WORKS[0]);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [rateUsdc, setRateUsdc] = useState<number>(0.0001); // per-second rate (from on-chain config)
+  const [approved, setApproved] = useState<boolean>(false); // listener has approved USDC to escrow
+  const [approving, setApproving] = useState<boolean>(false);
+
+  // Listener approves the escrow to pull USDC, so per-second settlement can actually clear.
+  const handleApproveUsdc = async () => {
+    if (!wallets[0]) {
+      setStatusMsg({ type: 'error', text: 'Connect a wallet first.' });
+      return;
+    }
+    setApproving(true);
+    setStatusMsg({ type: 'info', text: 'Approving USDC for per-second streaming…' });
+    try {
+      const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
+      const signer = await provider.getSigner();
+      const usdc = new ethers.Contract(
+        USDC_ADDRESS,
+        ['function approve(address spender, uint256 amount) returns (bool)'],
+        signer,
+      );
+      const tx = await usdc.approve(ESCROW_ADDRESS, ethers.MaxUint256);
+      await tx.wait();
+      setApproved(true);
+      setStatusMsg({ type: 'success', text: 'USDC enabled — the escrow can now meter your playback per second.' });
+    } catch {
+      setStatusMsg({ type: 'error', text: 'USDC approval failed.' });
+    } finally {
+      setApproving(false);
+    }
+  };
   
   // Discrete unlock state
   const [unlockedContents, setUnlockedContents] = useState<Record<string, { content?: string; url?: string }>>({});
@@ -111,12 +147,12 @@ export default function MediaPlayer() {
           const res = await fetch(`${BACKEND_URL}/access/session/settle`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId })
+            body: JSON.stringify({ sessionId, elapsedSeconds: currentTime })
           }).then(r => r.json());
-          
+
           setStatusMsg({
             type: 'success',
-            text: `USDC Settled successfully! Session ID cleared. Tx Hash: ${res.txHash.slice(0, 10)}...${res.txHash.slice(-8)}`
+            text: `Settled ${currentTime}s × $${rateUsdc}/s = $${(currentTime * rateUsdc).toFixed(6)} USDC on Arc. Tx: ${res.txHash.slice(0, 10)}...${res.txHash.slice(-8)}`
           });
         } catch (err) {
           setStatusMsg({ type: 'error', text: 'Settlement transaction failed on-chain.' });
@@ -148,7 +184,8 @@ export default function MediaPlayer() {
           body: JSON.stringify({
             tokenId: selectedWork.id,
             listener: user?.wallet?.address,
-            authorisedUsdc: selectedWork.price * 10
+            // Pre-authorise a session budget (~10 min of playback) — the contract caps to this.
+            authorisedUsdc: Math.max(0.1, rateUsdc * 600)
           })
         }).then(r => r.json());
 
@@ -261,7 +298,84 @@ export default function MediaPlayer() {
     setCurrentTime(0);
     setSessionId(null);
     setStatusMsg(null);
-  }, [selectedWork]);
+
+    // Pull the live on-chain config (real per-second rate) + the listener's USDC allowance.
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await fetch(`${BACKEND_URL}/access/config/${selectedWork.id}`).then((r) => r.json());
+        if (cancelled) return;
+        const onchainRate = Number(cfg.ratePerSecond) / 1e6;
+        setRateUsdc(onchainRate > 0 ? onchainRate : selectedWork.ratePerSecondUsdc ?? 0.0001);
+      } catch {
+        if (!cancelled) setRateUsdc(selectedWork.ratePerSecondUsdc ?? 0.0001);
+      }
+
+      if (selectedWork.mode === 'TIMED' && user?.wallet?.address) {
+        try {
+          const ro = new ethers.JsonRpcProvider(ARC_RPC_URL);
+          const usdc = new ethers.Contract(
+            USDC_ADDRESS,
+            ['function allowance(address owner, address spender) view returns (uint256)'],
+            ro,
+          );
+          const a: bigint = await usdc.allowance(user.wallet.address, ESCROW_ADDRESS);
+          if (!cancelled) setApproved(a > BigInt(0));
+        } catch {
+          /* leave approved as-is */
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedWork, user?.wallet?.address]);
+
+  // Load the real on-chain catalogue once; fall back to the seed works if empty/unavailable.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cat = await fetch(`${BACKEND_URL}/access/catalogue`).then((r) => r.json());
+        if (cancelled || !Array.isArray(cat) || cat.length === 0) return;
+        const mapped: WorkItem[] = await Promise.all(
+          cat.map(async (w: Record<string, unknown>) => {
+            let meta: Record<string, unknown> | null = null;
+            try {
+              const uri = String(w.tokenURI ?? '');
+              const url = uri.startsWith('ipfs://') ? IPFS_GATEWAY + uri.slice(7) : uri;
+              if (url) meta = await fetch(url).then((r) => r.json()).catch(() => null);
+            } catch {
+              /* unresolved metadata — fall back below */
+            }
+            const mode = w.mode as 'TIMED' | 'DISCRETE';
+            return {
+              id: String(w.id),
+              title: (meta?.title as string) ?? (meta?.name as string) ?? `Work #${w.id}`,
+              creator: String(w.creator),
+              category: (meta?.category as string) ?? (mode === 'TIMED' ? 'music' : 'art'),
+              price: Number(w.pricePerAccessUsdc),
+              discoveryPrice: Number(w.discoveryPriceUsdc),
+              ratePerSecondUsdc: Number(w.ratePerSecondUsdc),
+              mode,
+              minAccessSeconds: Number(w.minAccessSeconds),
+              url: (meta?.url as string) ?? (meta?.animation_url as string) ?? (meta?.image as string),
+              content: meta?.content as string,
+            } as WorkItem;
+          }),
+        );
+        if (!cancelled) {
+          setWorks(mapped);
+          setSelectedWork(mapped[0]);
+        }
+      } catch {
+        /* keep seed works */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const renderIcon = (cat: string) => {
     switch (cat) {
@@ -361,11 +475,16 @@ export default function MediaPlayer() {
                 </div>
                 
                 {isPlaying && (
-                  <div className="flex items-center justify-center gap-2 text-zinc-400 text-xs">
-                    <Coins className="w-4 h-4 text-kente-gold" />
-                    <span>Accumulating: </span>
-                    <span className="font-mono text-white font-bold">
-                      ${(currentTime * (selectedWork.price / 30)).toFixed(6)} USDC
+                  <div className="flex flex-col items-center gap-1 text-zinc-400 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-kente-gold" />
+                      <span>Accumulating: </span>
+                      <span className="font-mono text-white font-bold">
+                        ${(currentTime * rateUsdc).toFixed(6)} USDC
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500">
+                      per-second nanopayment · ${rateUsdc}/s · pay for exactly what you hear
                     </span>
                   </div>
                 )}
@@ -422,6 +541,16 @@ export default function MediaPlayer() {
           {/* Bottom Control Bar */}
           <div className="border-t border-zinc-800/60 pt-4 flex items-center justify-between z-10">
             {selectedWork.mode === 'TIMED' ? (
+              !approved ? (
+              <button
+                onClick={handleApproveUsdc}
+                disabled={approving}
+                className="bg-kente-gold hover:bg-kente-gold-light text-zinc-950 font-bold px-5 py-2.5 rounded-full text-sm inline-flex items-center gap-1.5 transition-all shadow-md"
+              >
+                {approving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Coins className="w-4 h-4" />}
+                Enable per-second payments
+              </button>
+              ) : (
               <div className="flex items-center gap-3">
                 <button
                   onClick={handlePlayToggle}
@@ -451,6 +580,7 @@ export default function MediaPlayer() {
                   </button>
                 )}
               </div>
+              )
             ) : (
               <div className="text-zinc-500 text-xs">
                 Discrete access remains unlocked forever once purchased.

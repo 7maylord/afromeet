@@ -1,7 +1,7 @@
 'use client';
 
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { 
   Upload, 
@@ -14,8 +14,10 @@ import {
   Percent
 } from 'lucide-react';
 
-const AFROMEET_NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS || '0xef0ee06ebfb7536dfce6db0c83aa460ef3ed8322';
-const SPLIT_RESOLVER_ADDRESS = process.env.NEXT_PUBLIC_SPLIT_RESOLVER_ADDRESS || '0x49fa30f9be0158ce135fa42d390ad4664362ff9a';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
+const AFROMEET_NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS || '0x9A8c6Df48613265Ea2b90f1e4Dd85eC3Ca9A85DE';
+const SPLIT_RESOLVER_ADDRESS = process.env.NEXT_PUBLIC_SPLIT_RESOLVER_ADDRESS || '0x4cdd345EEFbfFE00F004C64Fe72da6EC667f8852';
+const ACCESS_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_REGISTRY_ADDRESS || '0x5363eACF9b04CAfcD1DDb0dc5365532644A1B46A';
 
 interface SplitRecipient {
   address: string;
@@ -45,6 +47,18 @@ export default function MintForm() {
   const [msg, setMsg] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Default the first royalty split to the connected wallet (100%), so a solo creator types
+  // nothing — they only add rows/addresses to share revenue with collaborators.
+  const connectedAddress = wallets[0]?.address;
+  useEffect(() => {
+    if (!connectedAddress) return;
+    setSplits((prev) =>
+      prev.length > 0 && prev[0].address === ''
+        ? [{ ...prev[0], address: connectedAddress }, ...prev.slice(1)]
+        : prev,
+    );
+  }, [connectedAddress]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -92,47 +106,97 @@ export default function MintForm() {
 
     setLoading(true);
     setStatus('uploading');
-    setMsg('Uploading asset + metadata to IPFS...');
+    setMsg('Pinning asset + metadata to IPFS...');
 
     try {
-      // Simulate IPFS upload progress
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const mockCid = `ipfs://bafybeih${Array.from({length: 32}, () => Math.floor(Math.random()*16).toString(16)).join('')}`;
-      
+      // 1. Upload media + metadata via the backend (Pinata proxy) → tokenURI.
+      const form = new FormData();
+      form.append('file', file as File);
+      form.append('title', title);
+      form.append('description', description);
+      form.append('category', category);
+      const up = await fetch(`${BACKEND_URL}/works/upload`, { method: 'POST', body: form }).then((r) => r.json());
+      if (!up?.metadataUri) throw new Error(up?.message || 'IPFS upload failed');
+
       setStatus('minting');
-      setMsg('Submitting mint transaction on Arc Testnet...');
-      
-      const wallet = wallets[0];
-      const eip1193Provider = await wallet.getEthereumProvider();
-      const provider = new ethers.BrowserProvider(eip1193Provider);
+      setMsg('Minting work NFT on Arc...');
+
+      const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
       const signer = await provider.getSigner();
-      
-      // 1. Call mintWork(uri) on NFT contract
-      const nftContract = new ethers.Contract(
+      const creatorAddr = await signer.getAddress();
+
+      // 2. Mint the work NFT and read the tokenId from the Transfer event.
+      const nft = new ethers.Contract(
         AFROMEET_NFT_ADDRESS,
         ['function mintWork(string uri) returns (uint256)'],
-        signer
+        signer,
       );
-      
-      const tx = await nftContract.mintWork(mockCid);
-      setMsg(`Transaction submitted! Hash: ${tx.hash.slice(0, 12)}... Waiting for confirmation.`);
-      const receipt = await tx.wait();
-      
-      // Read tokenId from logs/events or mock it if needed.
-      // E.g. get logs
-      
+      const mintTx = await nft.mintWork(up.metadataUri);
+      setMsg(`Mint tx ${mintTx.hash.slice(0, 10)}… confirming.`);
+      const receipt = await mintTx.wait();
+
+      const iface = new ethers.Interface([
+        'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
+      ]);
+      let tokenId: bigint | undefined;
+      for (const log of receipt.logs) {
+        if (log.address.toLowerCase() !== AFROMEET_NFT_ADDRESS.toLowerCase()) continue;
+        try {
+          const parsed = iface.parseLog(log);
+          if (parsed?.name === 'Transfer') {
+            tokenId = parsed.args.tokenId as bigint;
+            break;
+          }
+        } catch {
+          /* not a Transfer log */
+        }
+      }
+      if (tokenId === undefined) throw new Error('Could not read minted tokenId');
+
+      // 3. Configure access — per-second rate for TIMED, flat unlock price for DISCRETE.
+      setMsg(`Configuring access for work #${tokenId}…`);
+      const toRaw = (v: string) => ethers.parseUnits(v || '0', 6);
+      const isTimed = mode === 'TIMED';
+      const registry = new ethers.Contract(
+        ACCESS_REGISTRY_ADDRESS,
+        ['function setConfig(uint256 tokenId, uint256 pricePerAccess, uint256 discoveryPrice, uint256 ratePerSecond, uint8 mode, uint256 minAccessSeconds)'],
+        signer,
+      );
+      await (
+        await registry.setConfig(
+          tokenId,
+          isTimed ? 0 : toRaw(price), // pricePerAccess (DISCRETE flat)
+          toRaw(discoveryPrice), // discoveryPrice
+          isTimed ? toRaw(price) : 0, // ratePerSecond (TIMED)
+          isTimed ? 0 : 1, // mode enum
+          minAccessSeconds,
+        )
+      ).wait();
+
+      // 4. Set royalty splits (must sum to 10000; falls back to the creator for blank rows).
+      setMsg(`Setting royalty splits for work #${tokenId}…`);
+      const resolver = new ethers.Contract(
+        SPLIT_RESOLVER_ADDRESS,
+        ['function setSplits(uint256 tokenId, address[] recipients, uint256[] bps)'],
+        signer,
+      );
+      await (
+        await resolver.setSplits(
+          tokenId,
+          splits.map((s) => s.address || creatorAddr),
+          splits.map((s) => s.bps),
+        )
+      ).wait();
+
       setStatus('success');
-      setMsg(`Work successfully minted as NFT on Arc! IPFS: ${mockCid}`);
-      
-      // Reset form
+      setMsg(`Work #${tokenId} is live on AfroMeet — it now appears in the catalogue.`);
       setTitle('');
       setDescription('');
       setFile(null);
     } catch (err) {
       console.error(err);
       setStatus('error');
-      setMsg(`Minting failed: ${(err as Error).message || err}`);
+      setMsg(`Mint failed: ${(err as Error).message || err}`);
     } finally {
       setLoading(false);
     }
@@ -241,7 +305,7 @@ export default function MintForm() {
         <div className="grid grid-cols-3 gap-4">
           <div className="space-y-2">
             <label className="text-zinc-400 font-semibold text-xs uppercase tracking-wider">
-              Price / Access (USDC)
+              {mode === 'TIMED' ? 'Rate / Second (USDC)' : 'Unlock Price (USDC)'}
             </label>
             <input
               type="number"

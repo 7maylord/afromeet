@@ -1,0 +1,185 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "nft_",
+        "type": "address",
+        "internalType": "contract IAfroMeetNFT"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "configs",
+    "inputs": [
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "pricePerAccess",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "discoveryPrice",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "mode",
+        "type": "uint8",
+        "internalType": "enum AccessRegistry.AccessMode"
+      },
+      {
+        "name": "minAccessSeconds",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "daoTreasury",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getConfig",
+    "inputs": [
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct AccessRegistry.AccessConfig",
+        "components": [
+          {
+            "name": "pricePerAccess",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "discoveryPrice",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "mode",
+            "type": "uint8",
+            "internalType": "enum AccessRegistry.AccessMode"
+          },
+          {
+            "name": "minAccessSeconds",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "daoTreasury",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nft",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IAfroMeetNFT"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setConfig",
+    "inputs": [
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "pricePerAccess",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "discoveryPrice",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "mode",
+        "type": "uint8",
+        "internalType": "enum AccessRegistry.AccessMode"
+      },
+      {
+        "name": "minAccessSeconds",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "ConfigSet",
+    "inputs": [
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "pricePerAccess",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "discoveryPrice",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "mode",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "enum AccessRegistry.AccessMode"
+      }
+    ],
+    "anonymous": false
+  }
+]
