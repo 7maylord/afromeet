@@ -33,6 +33,7 @@ Fill `.env`:
 - `CIRCLE_API_KEY` + `CIRCLE_ENTITY_SECRET` — from the Circle Developer Console (Testnet). The entity secret must be **registered** with Circle before wallets can be created.
 - `CIRCLE_WALLET_ID` — set after provisioning (below)
 - `ANTHROPIC_API_KEY`
+- `PINATA_JWT` — server-side Pinata JWT for creator work uploads (`POST /works/upload`)
 - `ERC8004_AGENT_ID` — **set this after first registration** (the log prints it), or the agent re-registers on every boot
 - `ERC8004_METADATA_URI` — your agent-card IPFS link
 
@@ -58,12 +59,16 @@ Put `walletId` in `CIRCLE_WALLET_ID`, fund the returned address with testnet USD
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | GET | `/health` | Liveness + Arc connection |
+| POST | `/works/upload` | Pin a work + metadata to IPFS (Pinata); returns the tokenURI |
+| GET | `/access/catalogue` | Every active work on-chain with pricing + tokenURI |
 | GET | `/access/config/:tokenId` | Public access config for a work |
 | GET | `/access/:tokenId` | **x402**: 402 until USDC paid to creator, then content |
 | POST | `/access/session/open` | Operator opens a metered session |
-| POST | `/access/session/settle` | Settle → splits + 1% DAO cut |
+| GET | `/access/session/heartbeat` | Live accrued cost after N seconds (the ticking meter) |
+| POST | `/access/session/settle` | Settle metered seconds → splits + 1% DAO cut |
 | GET | `/agent/status` | Agent wallet + ERC-8004 id |
 | POST | `/agent/run` | Trigger one autonomous pass |
+| GET | `/agent/picks` | What the agent is enjoying — the recommendation feed |
 | POST | `/agent/wallet/provision` | One-time SDK wallet provisioning |
 | POST | `/agent/metadata` | Update the agent's ERC-8004 metadata URI |
 | GET | `/services/search?q=&category=` | Search the x402 paid-API marketplace |
@@ -81,7 +86,18 @@ for the mainnet directory (real USDC, more web-research services). Every payment
 
 ## The Patron Agent
 
-`discover` (enumerate active works) → `sample` (pay discovery nanopayment) → `evaluate` (Claude scores using on-chain revenue momentum) → `backWork` (approve + `buyShares`) → `recordReputation` (ERC-8004). Deterministic guardrails (budget caps, share math) wrap the model's judgment. Runs on a 30-minute cron or via `POST /agent/run`.
+`discover` (enumerate active works) → `sample` (pay the per-access nanopayment to *consume* the work) → `research` (buy external context via x402 services) → `evaluate` (Claude scores using on-chain revenue momentum) → **like** (records a public pick) → optionally `backWork` (approve + `buyShares`) → `recordReputation` (ERC-8004). Deterministic guardrails (budget caps, share math) wrap the model's judgment. Runs on a 30-minute cron or via `POST /agent/run`; its likes surface at `GET /agent/picks` as a recommendation feed.
+
+## Tests
+
+```bash
+pnpm test
+```
+
+Unit tests cover the deterministic, security-critical logic without needing live infra:
+- **`blockchain.service.spec.ts`** — calldata encoders round-trip (the backend signs exactly what it intends).
+- **`access.service.spec.ts`** — per-second meter math + skip-gate + metered settle.
+- **`nanopayment.guard.spec.ts`** — the x402 gate: free discovery, 402 instructions, payment verification, underpayment rejection, and replay dedup.
 
 ## Wallets (Arc Testnet)
 
