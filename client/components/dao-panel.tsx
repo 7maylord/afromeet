@@ -1,7 +1,8 @@
 'use client';
 
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
 import { 
   Building2, 
   Plus, 
@@ -50,6 +51,9 @@ const DEFAULT_PROPOSALS: Proposal[] = [
 
 export default function DaoPanel() {
   const { user, authenticated } = usePrivy();
+  const { wallets } = useWallets();
+  // View the connected creator's own DAO (their ecosystem). DEFAULT_CREATOR is a fallback only.
+  const creator = user?.wallet?.address || DEFAULT_CREATOR;
   const [proposals, setProposals] = useState<Proposal[]>(DEFAULT_PROPOSALS);
   const [treasuryBalance, setTreasuryBalance] = useState<string>('120.00');
   const [vibeBalance, setVibeBalance] = useState<number>(250);
@@ -66,8 +70,8 @@ export default function DaoPanel() {
   const fetchDaoData = async () => {
     try {
       const [treasuryRes, proposalsRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/dao/${DEFAULT_CREATOR}/treasury`).then(r => r.json()),
-        fetch(`${BACKEND_URL}/dao/${DEFAULT_CREATOR}/proposals`).then(r => r.json())
+        fetch(`${BACKEND_URL}/dao/${creator}/treasury`).then(r => r.json()),
+        fetch(`${BACKEND_URL}/dao/${creator}/proposals`).then(r => r.json())
       ]);
       
       setTreasuryBalance((Number(treasuryRes.balance) / 1e6).toFixed(2));
@@ -86,41 +90,32 @@ export default function DaoPanel() {
   }, []);
 
   const handleVote = async (proposalId: string, support: number) => {
-    if (!authenticated) {
+    if (!authenticated || !wallets[0]) {
       setStatusMsg({ type: 'error', text: 'Please connect your wallet first.' });
       return;
     }
     setLoading(true);
     setActionId(`vote-${proposalId}`);
-    setStatusMsg({ type: 'info', text: 'Submitting gasless DAO vote on Arc...' });
+    setStatusMsg({ type: 'info', text: 'Casting your DAO vote on Arc...' });
 
     try {
-      // In AfroMeet, voting is submitted to the backend which relays it gaslessly to the contract
-      const res = await fetch(`${BACKEND_URL}/dao/${DEFAULT_CREATOR}/vote`, {
+      // Backend builds the castVote tx; we sign it with the voter's wallet so it uses their VIBE.
+      const { to, data } = await fetch(`${BACKEND_URL}/dao/${creator}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          proposalId,
-          support, // 0 = Against, 1 = For, 2 = Abstain
-          voter: user?.wallet?.address
-        })
+        body: JSON.stringify({ proposalId, support, voter: user?.wallet?.address })
       }).then(r => r.json());
+      if (!to || !data) throw new Error('No DAO found for this creator');
 
-      setStatusMsg({ type: 'success', text: `Vote submitted successfully! Weighted voting power applied.` });
+      const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
+      const signer = await provider.getSigner();
+      const tx = await signer.sendTransaction({ to, data });
+      await tx.wait();
+
+      setStatusMsg({ type: 'success', text: `Vote cast on-chain with your VIBE power. Tx ${tx.hash.slice(0, 10)}…` });
       fetchDaoData();
     } catch (err) {
-      // Fallback update for UX demo
-      setProposals(prev => prev.map(p => {
-        if (p.id === proposalId) {
-          return {
-            ...p,
-            votesFor: support === 1 ? p.votesFor + vibeBalance : p.votesFor,
-            votesAgainst: support === 0 ? p.votesAgainst + vibeBalance : p.votesAgainst
-          };
-        }
-        return p;
-      }));
-      setStatusMsg({ type: 'success', text: `Vote submitted gaslessly! Voting Power: ${vibeBalance} VIBE.` });
+      setStatusMsg({ type: 'error', text: `Vote failed: ${(err as Error).message || err}` });
     } finally {
       setLoading(false);
       setActionId(null);
@@ -131,41 +126,33 @@ export default function DaoPanel() {
     e.preventDefault();
     if (!newTitle || !newDesc) return;
 
+    if (!wallets[0]) {
+      setStatusMsg({ type: 'error', text: 'Connect your wallet first.' });
+      return;
+    }
     setLoading(true);
     setStatusMsg({ type: 'info', text: 'Deploying governance proposal on Arc...' });
-    
+
     try {
-      const res = await fetch(`${BACKEND_URL}/dao/${DEFAULT_CREATOR}/propose`, {
+      const { to, data } = await fetch(`${BACKEND_URL}/dao/${creator}/propose`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: newTitle,
-          description: newDesc,
-          proposer: user?.wallet?.address
-        })
+        body: JSON.stringify({ title: newTitle, description: newDesc, proposer: user?.wallet?.address })
       }).then(r => r.json());
+      if (!to || !data) throw new Error('No DAO found — mint a work first to create your ecosystem');
 
-      setStatusMsg({ type: 'success', text: 'Proposal successfully indexed and published on-chain!' });
+      const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
+      const signer = await provider.getSigner();
+      const tx = await signer.sendTransaction({ to, data });
+      await tx.wait();
+
+      setStatusMsg({ type: 'success', text: `Proposal published on-chain via CreatorDAO. Tx ${tx.hash.slice(0, 10)}…` });
       setShowCreateForm(false);
       setNewTitle('');
       setNewDesc('');
       fetchDaoData();
     } catch (err) {
-      // Demo fallback update
-      const newProp: Proposal = {
-        id: (proposals.length + 1).toString(),
-        title: newTitle,
-        description: newDesc,
-        status: 'Active',
-        votesFor: 0,
-        votesAgainst: 0,
-        endTime: new Date(Date.now() + 3*24*3600*1000).toISOString().split('T')[0]
-      };
-      setProposals(prev => [newProp, ...prev]);
-      setStatusMsg({ type: 'success', text: 'Proposal deployed on-chain via CreatorDAO!' });
-      setShowCreateForm(false);
-      setNewTitle('');
-      setNewDesc('');
+      setStatusMsg({ type: 'error', text: `Proposal failed: ${(err as Error).message || err}` });
     } finally {
       setLoading(false);
     }
