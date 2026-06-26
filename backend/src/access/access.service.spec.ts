@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { AccessService } from './access.service';
 import { BlockchainService, AccessConfig } from '../blockchain/blockchain.service';
 import { WalletsService } from '../circle/wallets.service';
+import { MediaVaultService } from '../media-vault/media-vault.service';
 
 const timedConfig: AccessConfig = {
   pricePerAccess: 0n,
@@ -33,10 +34,12 @@ describe('AccessService', () => {
         ({ 'contracts.accessEscrow': '0xESCROW', ipfsGateway: 'https://gw/' } as Record<string, string>)[k],
       ),
     } as unknown as ConfigService;
+    const vault = { get: jest.fn() } as unknown as MediaVaultService;
     svc = new AccessService(
       blockchain as unknown as BlockchainService,
       wallets as unknown as WalletsService,
       config,
+      vault,
     );
   });
 

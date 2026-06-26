@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createCipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { MediaVaultService } from '../media-vault/media-vault.service';
 
 interface UploadedFile {
   buffer: Buffer;
@@ -8,12 +10,16 @@ interface UploadedFile {
 }
 
 /**
- * Pins a creator's work + metadata to IPFS via Pinata (JWT kept server-side). Returns the
- * tokenURI the client then mints with `AfroMeetNFT.mintWork`.
+ * Encrypts a creator's work (AES-256-GCM), pins the **ciphertext** to IPFS, and stashes the key in
+ * the MediaVault. The public metadata (tokenURI) carries only the preview + the ciphertext CID — never
+ * the key. The key is released later by AccessService, only after the x402 payment is verified.
  */
 @Injectable()
 export class WorksService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly vault: MediaVaultService,
+  ) {}
 
   private jwt(): string {
     const jwt = this.config.get<string>('pinataJwt');
@@ -21,53 +27,70 @@ export class WorksService {
     return jwt;
   }
 
-  async upload(
-    file: UploadedFile,
-    fields: { title: string; description?: string; category?: string },
-  ): Promise<{ metadataUri: string; metadataCid: string; mediaUri: string }> {
-    if (!file?.buffer) throw new BadRequestException('file is required');
-    const jwt = this.jwt();
-    const gateway = this.config.get<string>('ipfsGateway')!;
-
-    // 1. Pin the media file.
+  private async pinFile(jwt: string, bytes: Buffer, name: string): Promise<string> {
     const form = new FormData();
-    form.append(
-      'file',
-      new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
-      file.originalname,
-    );
-    const fileRes = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    form.append('file', new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' }), name);
+    const res = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}` },
       body: form,
     });
-    if (!fileRes.ok) throw new BadRequestException(`Pinata file pin failed: ${await fileRes.text()}`);
-    const mediaCid = ((await fileRes.json()) as { IpfsHash: string }).IpfsHash;
+    if (!res.ok) throw new BadRequestException(`Pinata file pin failed: ${await res.text()}`);
+    return ((await res.json()) as { IpfsHash: string }).IpfsHash;
+  }
 
-    // 2. Build + pin the public preview metadata (the tokenURI).
-    const metadata: Record<string, unknown> = {
+  private async pinJson(jwt: string, content: unknown): Promise<string> {
+    const res = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinataContent: content }),
+    });
+    if (!res.ok) throw new BadRequestException(`Pinata JSON pin failed: ${await res.text()}`);
+    return ((await res.json()) as { IpfsHash: string }).IpfsHash;
+  }
+
+  async upload(
+    file: UploadedFile,
+    fields: { title: string; description?: string; category?: string },
+  ): Promise<{ metadataUri: string; metadataCid: string; uploadId: string; cipherCid: string }> {
+    if (!file?.buffer) throw new BadRequestException('file is required');
+    const jwt = this.jwt();
+
+    // 1. Encrypt the master. Append the GCM auth tag so WebCrypto can decrypt it client-side.
+    const key = randomBytes(32);
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const enc = Buffer.concat([cipher.update(file.buffer), cipher.final()]);
+    const ciphertext = Buffer.concat([enc, cipher.getAuthTag()]);
+
+    // 2. Pin the ciphertext (public IPFS — encrypted, so safe).
+    const cipherCid = await this.pinFile(jwt, ciphertext, `${file.originalname}.enc`);
+
+    // 3. Public preview metadata — NO key, NO plaintext.
+    const metadataCid = await this.pinJson(jwt, {
       name: fields.title,
       description: fields.description ?? '',
       category: fields.category ?? '',
       mediaType: file.mimetype,
-      image: gateway + mediaCid,
-      url: gateway + mediaCid,
+      encrypted: true,
+      cipherCid,
       created: new Date().toISOString(),
-    };
-    if (fields.category === 'writing') metadata.content = file.buffer.toString('utf8');
-
-    const jsonRes = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pinataContent: metadata }),
     });
-    if (!jsonRes.ok) throw new BadRequestException(`Pinata JSON pin failed: ${await jsonRes.text()}`);
-    const metadataCid = ((await jsonRes.json()) as { IpfsHash: string }).IpfsHash;
 
-    return {
-      metadataUri: `ipfs://${metadataCid}`,
-      metadataCid,
-      mediaUri: `ipfs://${mediaCid}`,
-    };
+    // 4. Stash the key against a transient uploadId (linked to the tokenId after mint).
+    const uploadId = randomUUID();
+    this.vault.stash(uploadId, {
+      keyHex: key.toString('hex'),
+      ivHex: iv.toString('hex'),
+      cipherCid,
+      mediaType: file.mimetype,
+    });
+
+    return { metadataUri: `ipfs://${metadataCid}`, metadataCid, uploadId, cipherCid };
+  }
+
+  /** After mint, bind the stashed key to the real tokenId. */
+  link(uploadId: string, tokenId: string): { cipherCid: string } {
+    return { cipherCid: this.vault.link(uploadId, tokenId) };
   }
 }

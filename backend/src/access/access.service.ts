@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { WalletsService } from '../circle/wallets.service';
+import { MediaVaultService } from '../media-vault/media-vault.service';
 
 @Injectable()
 export class AccessService {
@@ -10,6 +11,7 @@ export class AccessService {
     private readonly blockchain: BlockchainService,
     private readonly wallets: WalletsService,
     private readonly config: ConfigService,
+    private readonly vault: MediaVaultService,
   ) {}
 
   /** The public catalogue: every active work on-chain with its pricing + tokenURI. */
@@ -73,12 +75,27 @@ export class AccessService {
     };
   }
 
-  /** Content delivered after the x402 discovery payment is verified. */
+  /**
+   * Released ONLY after the NanopaymentGuard verifies payment. For encrypted works this returns the
+   * ciphertext URL + the AES key/iv so the client can decrypt locally — the key never travels until
+   * the listener has paid. Falls back to the plain tokenURI for legacy/unencrypted works.
+   */
   async getContent(tokenId: string) {
-    const uri = await this.blockchain.getTokenUri(tokenId);
     const gateway = this.config.get<string>('ipfsGateway')!;
+    const rec = this.vault.get(tokenId);
+    if (rec) {
+      return {
+        tokenId,
+        encrypted: true,
+        cipherUrl: gateway + rec.cipherCid,
+        key: rec.keyHex,
+        iv: rec.ivHex,
+        mediaType: rec.mediaType,
+      };
+    }
+    const uri = await this.blockchain.getTokenUri(tokenId);
     const url = uri.startsWith('ipfs://') ? gateway + uri.slice('ipfs://'.length) : uri;
-    return { tokenId, uri, url };
+    return { tokenId, encrypted: false, uri, url };
   }
 
   /** Operator opens a metered session against a listener's pre-authorised USDC. */
