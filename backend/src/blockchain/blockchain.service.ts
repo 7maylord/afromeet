@@ -5,11 +5,22 @@ import {
   ACCESS_ESCROW_ABI,
   ACCESS_REGISTRY_ABI,
   AFROMEET_NFT_ABI,
+  CREATOR_DAO_ABI,
+  DAO_TREASURY_ABI,
   ERC20_ABI,
   FRACTIONAL_VAULT_ABI,
   FRACTIONAL_VAULT_FACTORY_ABI,
   SPLIT_RESOLVER_ABI,
 } from '../config/contracts';
+
+export interface Proposal {
+  proposalId: string;
+  description: string;
+  state: number;
+  forVotes: bigint;
+  againstVotes: bigint;
+  deadline: number;
+}
 
 export interface AccessConfig {
   pricePerAccess: bigint;
@@ -105,6 +116,113 @@ export class BlockchainService implements OnModuleInit {
 
   nftAddress(): string {
     return this.config.get<string>('contracts.afroMeetNft')!;
+  }
+
+  // --- Governance + earnings reads ------------------------------------------
+
+  async ecosystemOf(
+    creator: string,
+  ): Promise<{ token: string; dao: string; treasury: string; exists: boolean }> {
+    const e = await this.nft.ecosystemOf(creator);
+    return { token: e.token, dao: e.dao, treasury: e.treasury, exists: e.exists };
+  }
+
+  /** TokenIds created by `creator` (small catalogues only — linear scan). */
+  async getCreatorTokenIds(creator: string): Promise<number[]> {
+    const next = Number(await this.nft.nextTokenId());
+    const want = creator.toLowerCase();
+    const ids: number[] = [];
+    for (let id = 1; id <= next; id++) {
+      try {
+        if ((await this.nft.creatorOf(id)).toLowerCase() === want) ids.push(id);
+      } catch {
+        /* skip */
+      }
+    }
+    return ids;
+  }
+
+  /** Total access revenue settled to a creator's works + the number of paid accesses. */
+  async getEarnings(creator: string): Promise<{ totalAmount: bigint; count: number }> {
+    const escrowAddr = this.config.get<string>('contracts.accessEscrow');
+    const tokenIds = await this.getCreatorTokenIds(creator);
+    if (!escrowAddr || tokenIds.length === 0) return { totalAmount: 0n, count: 0 };
+
+    const iface = new ethers.Interface(ACCESS_ESCROW_ABI);
+    const settledTopic = iface.getEvent('Settled')!.topicHash;
+    const tokenTopics = tokenIds.map((id) => ethers.zeroPadValue(ethers.toBeHex(id), 32));
+    const logs = await this.provider.getLogs({
+      address: escrowAddr,
+      topics: [settledTopic, null, tokenTopics], // topic2 = tokenId (OR match)
+      fromBlock: 0,
+      toBlock: 'latest',
+    });
+
+    let total = 0n;
+    for (const log of logs) {
+      const parsed = iface.parseLog(log);
+      if (parsed) total += parsed.args.amount as bigint;
+    }
+    return { totalAmount: total, count: logs.length };
+  }
+
+  /** A creator DAO's proposals, read from ProposalCreated events + on-chain state/votes. */
+  async getProposals(dao: string): Promise<Proposal[]> {
+    const iface = new ethers.Interface(CREATOR_DAO_ABI);
+    const topic = iface.getEvent('ProposalCreated')!.topicHash;
+    const logs = await this.provider.getLogs({
+      address: dao,
+      topics: [topic],
+      fromBlock: 0,
+      toBlock: 'latest',
+    });
+    const daoC = new ethers.Contract(dao, CREATOR_DAO_ABI, this.provider);
+
+    const out: Proposal[] = [];
+    for (const log of logs) {
+      const parsed = iface.parseLog(log);
+      if (!parsed) continue;
+      const proposalId = parsed.args.proposalId as bigint;
+      const [state, votes, deadline] = await Promise.all([
+        daoC.state(proposalId).catch(() => 0),
+        daoC.proposalVotes(proposalId).catch(() => [0n, 0n, 0n]),
+        daoC.proposalDeadline(proposalId).catch(() => 0n),
+      ]);
+      out.push({
+        proposalId: proposalId.toString(),
+        description: parsed.args.description as string,
+        state: Number(state),
+        againstVotes: votes[0] as bigint,
+        forVotes: votes[1] as bigint,
+        deadline: Number(deadline),
+      });
+    }
+    return out;
+  }
+
+  // --- Governance calldata (signed client-side by the voter/proposer) -------
+
+  encodeCastVote(proposalId: string, support: number): string {
+    return new ethers.Interface(CREATOR_DAO_ABI).encodeFunctionData('castVote', [
+      proposalId,
+      support,
+    ]);
+  }
+
+  encodePropose(targets: string[], values: bigint[], calldatas: string[], description: string): string {
+    return new ethers.Interface(CREATOR_DAO_ABI).encodeFunctionData('propose', [
+      targets,
+      values,
+      calldatas,
+      description,
+    ]);
+  }
+
+  encodeQueueDisbursement(to: string, amount: bigint): string {
+    return new ethers.Interface(DAO_TREASURY_ABI).encodeFunctionData('queueDisbursement', [
+      to,
+      amount,
+    ]);
   }
 
   async getSplits(

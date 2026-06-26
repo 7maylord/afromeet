@@ -17,7 +17,22 @@ export const AFROMEET_NFT_ABI = [
   'function tokenURI(uint256 tokenId) view returns (string)',
   'function nextTokenId() view returns (uint256)',
   'function treasuryOf(address creator) view returns (address)',
+  'function ecosystemOf(address creator) view returns (tuple(address token, address dao, address treasury, bool exists))',
   'function mintWork(string uri) returns (uint256)',
+];
+
+export const CREATOR_DAO_ABI = [
+  'function state(uint256 proposalId) view returns (uint8)',
+  'function proposalVotes(uint256 proposalId) view returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes)',
+  'function proposalDeadline(uint256 proposalId) view returns (uint256)',
+  'function propose(address[] targets, uint256[] values, bytes[] calldatas, string description) returns (uint256)',
+  'function castVote(uint256 proposalId, uint8 support) returns (uint256)',
+  'event ProposalCreated(uint256 proposalId, address proposer, address[] targets, uint256[] values, string[] signatures, bytes[] calldatas, uint256 voteStart, uint256 voteEnd, string description)',
+];
+
+export const DAO_TREASURY_ABI = [
+  'function balance() view returns (uint256)',
+  'function queueDisbursement(address to, uint256 amount) returns (uint256)',
 ];
 
 export const ACCESS_REGISTRY_ABI = [
@@ -29,6 +44,7 @@ export const ACCESS_ESCROW_ABI = [
   'function openSession(bytes32 sessionId, address listener, uint256 tokenId, uint256 authorisedAmount)',
   'function settle(bytes32 sessionId, uint256 elapsedSeconds)',
   'function sessions(bytes32 sessionId) view returns (address listener, uint256 tokenId, uint256 authorisedAmount, bool settled)',
+  'event Settled(bytes32 indexed sessionId, uint256 indexed tokenId, uint256 amount, uint256 daoCut)',
 ];
 
 export const SPLIT_RESOLVER_ABI = [
