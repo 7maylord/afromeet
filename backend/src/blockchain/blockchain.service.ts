@@ -255,6 +255,18 @@ export class BlockchainService implements OnModuleInit {
     return { pricePerShare, sharesForSale };
   }
 
+  async getSession(
+    sessionId: string,
+  ): Promise<{ listener: string; tokenId: bigint; authorisedAmount: bigint; settled: boolean }> {
+    const s = await this.escrow.sessions(sessionId);
+    return {
+      listener: s.listener,
+      tokenId: s.tokenId,
+      authorisedAmount: s.authorisedAmount,
+      settled: s.settled,
+    };
+  }
+
   async usdcDecimals(): Promise<number> {
     return Number(await this.usdc.decimals());
   }
