@@ -153,6 +153,13 @@ export default function MintForm() {
       }
       if (tokenId === undefined) throw new Error('Could not read minted tokenId');
 
+      // Bind the encrypted upload's key to the freshly-minted tokenId (gated media).
+      await fetch(`${BACKEND_URL}/works/${tokenId}/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId: up.uploadId }),
+      }).catch(() => undefined);
+
       // 3. Configure access — per-second rate for TIMED, flat unlock price for DISCRETE.
       setMsg(`Configuring access for work #${tokenId}…`);
       const toRaw = (v: string) => ethers.parseUnits(v || '0', 6);

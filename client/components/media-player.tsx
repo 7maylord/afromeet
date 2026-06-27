@@ -26,6 +26,24 @@ const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_ESCROW_ADDRESS || '0xB14a5
 const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_8a4be899b9561216f7e12003014260df2d070beec86b3207438f8360019cfaa3';
 const IPFS_GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
 
+const hexToBytes = (h: string) => new Uint8Array((h.match(/.{1,2}/g) ?? []).map((b) => parseInt(b, 16)));
+
+/** Decrypt an AES-256-GCM ciphertext (key released only after payment) → blob URL or text. */
+async function decryptGatedContent(c: {
+  cipherUrl: string;
+  key: string;
+  iv: string;
+  mediaType: string;
+}): Promise<{ url?: string; text?: string }> {
+  const cryptoKey = await crypto.subtle.importKey('raw', hexToBytes(c.key), 'AES-GCM', false, ['decrypt']);
+  const cipher = await fetch(c.cipherUrl).then((r) => r.arrayBuffer());
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(c.iv) }, cryptoKey, cipher);
+  if (c.mediaType.startsWith('text') || c.mediaType.includes('json')) {
+    return { text: new TextDecoder().decode(plain) };
+  }
+  return { url: URL.createObjectURL(new Blob([plain], { type: c.mediaType })) };
+}
+
 interface WorkItem {
   id: string;
   title: string;
@@ -213,80 +231,54 @@ export default function MediaPlayer() {
     }
   };
 
-  // Discrete Unlock handler (x402 protocol)
+  // Discrete unlock: pay the x402 discovery nanopayment, then decrypt the released master.
   const handleDiscreteUnlock = async () => {
-    if (!authenticated) {
+    if (!authenticated || !wallets[0]) {
       setStatusMsg({ type: 'error', text: 'Please connect your wallet first.' });
       return;
     }
-    
     setLoading(true);
-    setStatusMsg({ type: 'info', text: 'Preparing discovery unlock...' });
-    
     try {
-      // 1. Fetch config to find discoveryPrice
-      const config = await fetch(`${BACKEND_URL}/access/config/${selectedWork.id}`).then(r => r.json());
-      const rawPrice = config.discoveryPrice;
-      
-      // 2. Request mock/actual transfer. In Arc hackathon, we call a testnet USDC transfer
-      setStatusMsg({ type: 'info', text: 'Submitting gasless payment authorization...' });
-      
-      // Since Privy is connected, we can mock the transaction hash if custom signatures are omitted, 
-      // or construct a simple mock hash that the backend verifies or returns content for.
-      // Wait, NanopaymentGuard verifies that the USDC Transfer exists in transaction logs on-chain!
-      // In a real environment, the user signs a transaction. For this demo integration,
-      // we can trigger the transfer, or if we want a smooth flow, we submit a mock txHash 
-      // that is pre-authorized by our operator or has been populated on-chain.
-      // Let's generate a randomized transaction hash, and if the guard fails, we fallback to loading.
-      // To satisfy the guard, let's create a simulated transaction hash that the user is notified about.
-      const simulatedTxHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
-      
-      // Let's perform a request to backend access endpoint
-      const response = await fetch(`${BACKEND_URL}/access/${selectedWork.id}`, {
-        headers: {
-          'X-Payment-Tx': simulatedTxHash
-        }
-      });
-      
-      if (response.status === 402) {
-        // x402 payment required - this is expected!
-        const instructions = await response.json();
-        // Since we are running on Arc Testnet, the user needs to transfer the minAmount to the creator
-        setStatusMsg({
-          type: 'info',
-          text: `Payment required: Send ${instructions.minAmount} USDC to ${instructions.recipient}. Settling via operator wallet...`
-        });
-        
-        // For standard user experience, we can call the operator to settle it, or show that it has unlocked
-        // Let's simulate operator-aided gasless settlement for the demo, then fetch again
-        // We bypass the guard in verification or wait for the block confirmation.
-        // Let's mock a successful resolve by updating local unlock state
-        setTimeout(() => {
-          setUnlockedContents(prev => ({
-            ...prev,
-            [selectedWork.id]: {
-              content: selectedWork.content,
-              url: selectedWork.url
-            }
-          }));
-          setStatusMsg({
-            type: 'success',
-            text: `Successfully unlocked "${selectedWork.title}"! Content retrieved from IPFS.`
-          });
-          setLoading(false);
-        }, 2000);
-      } else {
-        const content = await response.json();
-        setUnlockedContents(prev => ({
-          ...prev,
-          [selectedWork.id]: content
-        }));
-        setStatusMsg({ type: 'success', text: `Work unlocked! Content fetched.` });
-        setLoading(false);
+      // 1. Pay the discovery price directly to the creator (real USDC transfer).
+      const cfg = await fetch(`${BACKEND_URL}/access/config/${selectedWork.id}`).then((r) => r.json());
+      const priceRaw = BigInt(cfg.discoveryPrice || '0');
+      let txHash = '';
+      if (priceRaw > BigInt(0)) {
+        setStatusMsg({ type: 'info', text: 'Paying discovery nanopayment in USDC…' });
+        const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
+        const signer = await provider.getSigner();
+        const usdc = new ethers.Contract(
+          USDC_ADDRESS,
+          ['function transfer(address to, uint256 amount) returns (bool)'],
+          signer,
+        );
+        const tx = await usdc.transfer(cfg.creator, priceRaw);
+        await tx.wait();
+        txHash = tx.hash;
       }
+
+      // 2. Fetch the gated content — the backend releases the key only if the payment verifies.
+      setStatusMsg({ type: 'info', text: 'Unlocking & decrypting content…' });
+      const res = await fetch(`${BACKEND_URL}/access/${selectedWork.id}`, {
+        headers: txHash ? { 'X-Payment-Tx': txHash } : {},
+      });
+      if (!res.ok) throw new Error('Payment not verified by the x402 gate');
+      const content = await res.json();
+
+      // 3. Decrypt locally (key released post-payment) and render.
+      let unlocked: { content?: string; url?: string } = {};
+      if (content.encrypted) {
+        const dec = await decryptGatedContent(content);
+        unlocked = { url: dec.url, content: dec.text };
+      } else {
+        unlocked = { url: content.url };
+      }
+      setUnlockedContents((prev) => ({ ...prev, [selectedWork.id]: unlocked }));
+      setStatusMsg({ type: 'success', text: `Unlocked "${selectedWork.title}" — decrypted from IPFS.` });
     } catch (err) {
       console.error(err);
-      setStatusMsg({ type: 'error', text: 'Failed to unlock discrete work.' });
+      setStatusMsg({ type: 'error', text: `Unlock failed: ${(err as Error).message || err}` });
+    } finally {
       setLoading(false);
     }
   };
