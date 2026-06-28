@@ -31,8 +31,11 @@ export class AgentController {
 
   @ApiOperation({ summary: "What the AfroMeet Agent is enjoying — its recommendation feed" })
   @Get('picks')
-  picks() {
-    return { agentId: this.erc8004.getAgentId()?.toString() ?? null, picks: this.agent.getPicks() };
+  async picks() {
+    return {
+      agentId: this.erc8004.getAgentId()?.toString() ?? null,
+      picks: await this.agent.getPicks(),
+    };
   }
 
   /**

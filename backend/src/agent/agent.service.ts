@@ -1,11 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { ethers } from 'ethers';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { WalletsService } from '../circle/wallets.service';
 import { Erc8004Service } from '../circle/erc8004.service';
 import { ServicesService } from '../services/services.service';
+import { AgentPick, AgentPickDocument } from '../database/schemas/agent-pick.schema';
 import { CandidateBrief, DecisionEngineService } from './decision-engine.service';
 
 /** A work the agent liked enough to pay to access — the unit of the public recommendation feed. */
@@ -38,12 +41,35 @@ export interface RunSummary {
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private running = false;
-  /** In-memory recommendation feed: the works the agent has liked, most recent first. */
+  /** In-memory fallback feed (used when MongoDB isn't configured). */
   private readonly picks: Pick[] = [];
 
   /** "What the AfroMeet Agent is enjoying" — the public recommendation feed. */
-  getPicks(limit = 20): Pick[] {
+  async getPicks(limit = 20): Promise<Pick[]> {
+    if (this.pickModel) {
+      const docs = await this.pickModel.find().sort({ _id: -1 }).limit(limit).lean();
+      return docs.map((d) => ({
+        tokenId: d.tokenId,
+        creator: d.creator,
+        contentUri: d.contentUri,
+        score: d.score,
+        note: d.note,
+        paidUsdc: d.paidUsdc,
+        accessTx: d.accessTx,
+        backed: d.backed,
+        at: d.at,
+      }));
+    }
     return this.picks.slice(0, limit);
+  }
+
+  private async addPick(pick: Pick): Promise<void> {
+    if (this.pickModel) {
+      await this.pickModel.create(pick);
+    } else {
+      this.picks.unshift(pick);
+      if (this.picks.length > 100) this.picks.length = 100;
+    }
   }
 
   constructor(
@@ -53,6 +79,7 @@ export class AgentService {
     private readonly decision: DecisionEngineService,
     private readonly services: ServicesService,
     private readonly config: ConfigService,
+    @Optional() @InjectModel(AgentPick.name) private readonly pickModel?: Model<AgentPickDocument>,
   ) {}
 
   @Cron(CronExpression.EVERY_30_MINUTES)
@@ -126,11 +153,9 @@ export class AgentService {
           backed,
           at: new Date().toISOString(),
         };
-        this.picks.unshift(pick);
+        await this.addPick(pick);
         summary.liked.push(pick);
       }
-
-      if (this.picks.length > 100) this.picks.length = 100; // cap the feed
     } finally {
       this.running = false;
     }
