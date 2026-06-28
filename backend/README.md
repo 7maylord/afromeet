@@ -5,6 +5,7 @@ NestJS API for AfroMeet — Circle wallets, x402 discovery, per-access settlemen
 ## Stack
 
 - **NestJS 11** + **ethers v6** (Arc reads + calldata encoding)
+- **MongoDB** (Mongoose) — optional persistence for media keys + the agent picks feed
 - **Circle** — `@circle-fin/developer-controlled-wallets` (programmatic on-chain signer) + Circle CLI Agent Wallet (x402 services)
 - **Anthropic SDK** — Claude judgment for the agent's evaluation
 - **ERC-8004** — on-chain agent identity + reputation
@@ -34,6 +35,7 @@ Fill `.env`:
 - `CIRCLE_WALLET_ID` — set after provisioning (below)
 - `ANTHROPIC_API_KEY`
 - `PINATA_JWT` — server-side Pinata JWT for creator work uploads (`POST /works/upload`)
+- `MONGODB_URI` — **optional**. Persists media keys + agent picks (Atlas or local). In-memory if unset.
 - `ERC8004_AGENT_ID` — **set this after first registration** (the log prints it), or the agent re-registers on every boot
 - `ERC8004_METADATA_URI` — your agent-card IPFS link
 
@@ -59,13 +61,19 @@ Put `walletId` in `CIRCLE_WALLET_ID`, fund the returned address with testnet USD
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | GET | `/health` | Liveness + Arc connection |
-| POST | `/works/upload` | Pin a work + metadata to IPFS (Pinata); returns the tokenURI |
+| POST | `/works/upload` | **Encrypt** + pin a work to IPFS; returns the tokenURI + uploadId |
+| POST | `/works/:tokenId/link` | Bind the encrypted upload's key to the minted tokenId |
 | GET | `/access/catalogue` | Every active work on-chain with pricing + tokenURI |
 | GET | `/access/config/:tokenId` | Public access config for a work |
-| GET | `/access/:tokenId` | **x402**: 402 until USDC paid to creator, then content |
+| GET | `/access/:tokenId` | **x402**: 402 until USDC paid to creator, then releases the key |
 | POST | `/access/session/open` | Operator opens a metered session |
 | GET | `/access/session/heartbeat` | Live accrued cost after N seconds (the ticking meter) |
+| GET | `/access/session/:sessionId/content` | Release the decryption key for an open session (streaming) |
 | POST | `/access/session/settle` | Settle metered seconds → splits + 1% DAO cut |
+| GET | `/dao/:creator/treasury` | Creator DAO treasury address + USDC balance |
+| GET | `/dao/:creator/proposals` | Proposals (state + votes) read from chain |
+| POST | `/dao/:creator/{vote,propose}` | Unsigned governance tx for the user to sign |
+| GET | `/creator/:address/earnings` | Total access revenue + paid-access count, from chain |
 | GET | `/agent/status` | Agent wallet + ERC-8004 id |
 | POST | `/agent/run` | Trigger one autonomous pass |
 | GET | `/agent/picks` | What the agent is enjoying — the recommendation feed |
@@ -74,6 +82,16 @@ Put `walletId` in `CIRCLE_WALLET_ID`, fund the returned address with testnet USD
 | GET | `/services/search?q=&category=` | Search the x402 paid-API marketplace |
 | GET | `/services/inspect?url=` | Inspect a service (pricing, schema, health) |
 | POST | `/services/pay` | Pay an x402 endpoint from the agent BASE wallet |
+
+## Gated media
+
+Masters are **AES-256-GCM encrypted** at upload; the ciphertext is pinned to public IPFS and the key
+is held server-side in the `MediaVault` (never in public metadata). The key is released only after
+payment: via the **x402 gate** (`GET /access/:tokenId`) for non-holder discovery, or via a **valid
+open session** (`GET /access/session/:sessionId/content`) for metered streaming. The client decrypts
+locally with WebCrypto. Every media type — audio, video, writing, art — is gated. *(Keys persist to
+**MongoDB** when `MONGODB_URI` is set, else in-memory. Backend custodies the key rather than a
+Lit-style threshold network, since per-access payments aren't a stateful on-chain condition.)*
 
 ## x402 services leg (RFB-01)
 
