@@ -79,7 +79,7 @@ export class WorksService {
 
     // 4. Stash the key against a transient uploadId (linked to the tokenId after mint).
     const uploadId = randomUUID();
-    this.vault.stash(uploadId, {
+    await this.vault.stash(uploadId, {
       keyHex: key.toString('hex'),
       ivHex: iv.toString('hex'),
       cipherCid,
@@ -90,7 +90,7 @@ export class WorksService {
   }
 
   /** After mint, bind the stashed key to the real tokenId. */
-  link(uploadId: string, tokenId: string): { cipherCid: string } {
-    return { cipherCid: this.vault.link(uploadId, tokenId) };
+  async link(uploadId: string, tokenId: string): Promise<{ cipherCid: string }> {
+    return { cipherCid: await this.vault.link(uploadId, tokenId) };
   }
 }

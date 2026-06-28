@@ -12,11 +12,13 @@ import { WorksModule } from './works/works.module';
 import { DaoModule } from './dao/dao.module';
 import { CreatorModule } from './creator/creator.module';
 import { MediaVaultModule } from './media-vault/media-vault.module';
+import { DatabaseModule } from './database/database.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
     ScheduleModule.forRoot(),
+    DatabaseModule.forRoot(),
     BlockchainModule,
     CircleModule,
     MediaVaultModule,
