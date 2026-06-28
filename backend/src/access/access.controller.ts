@@ -32,6 +32,12 @@ export class AccessController {
     return this.access.heartbeat(tokenId, Number(elapsed ?? 0));
   }
 
+  @ApiOperation({ summary: 'Release the decryption key for a work via a valid open session (streaming)' })
+  @Get('session/:sessionId/content')
+  sessionContent(@Param('sessionId') sessionId: string) {
+    return this.access.sessionContent(sessionId);
+  }
+
   @ApiOperation({
     summary: 'Operator settles a session for metered seconds (TIMED: elapsed × rate, capped)',
   })

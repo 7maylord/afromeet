@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import { BlockchainService } from '../blockchain/blockchain.service';
@@ -76,13 +76,29 @@ export class AccessService {
   }
 
   /**
-   * Released ONLY after the NanopaymentGuard verifies payment. For encrypted works this returns the
-   * ciphertext URL + the AES key/iv so the client can decrypt locally — the key never travels until
-   * the listener has paid. Falls back to the plain tokenURI for legacy/unencrypted works.
+   * Released ONLY after the NanopaymentGuard verifies the discovery payment (non-holders).
+   * Encrypted works return the ciphertext URL + AES key/iv for the client to decrypt locally.
    */
   async getContent(tokenId: string) {
+    return this.releaseContent(tokenId);
+  }
+
+  /**
+   * Holder/streaming path: releases the key for a work given a valid open (unsettled) session.
+   * No double-charge — the per-second settle is the payment; opening the session is the entitlement.
+   */
+  async sessionContent(sessionId: string) {
+    const s = await this.blockchain.getSession(sessionId);
+    if (s.listener === ethers.ZeroAddress || s.settled) {
+      throw new ForbiddenException('no open session for this content');
+    }
+    return this.releaseContent(s.tokenId.toString());
+  }
+
+  /** Returns decryption material for encrypted works, or the plain tokenURI for legacy works. */
+  private async releaseContent(tokenId: string) {
     const gateway = this.config.get<string>('ipfsGateway')!;
-    const rec = this.vault.get(tokenId);
+    const rec = await this.vault.get(tokenId);
     if (rec) {
       return {
         tokenId,
