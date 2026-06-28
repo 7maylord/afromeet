@@ -109,6 +109,7 @@ export default function MediaPlayer() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [rateUsdc, setRateUsdc] = useState<number>(0.0001); // per-second rate (from on-chain config)
+  const [decryptedUrl, setDecryptedUrl] = useState<string | null>(null); // gated audio after decrypt
   const [approved, setApproved] = useState<boolean>(false); // listener has approved USDC to escrow
   const [approving, setApproving] = useState<boolean>(false);
 
@@ -208,12 +209,25 @@ export default function MediaPlayer() {
         }).then(r => r.json());
 
         setSessionId(res.sessionId);
+
+        // Release + decrypt the gated master for this open session (no double-charge).
+        try {
+          const gated = await fetch(`${BACKEND_URL}/access/session/${res.sessionId}/content`).then(r => r.json());
+          const src = gated.encrypted ? (await decryptGatedContent(gated)).url : gated.url;
+          if (src) {
+            setDecryptedUrl(src);
+            if (audioRef.current) audioRef.current.src = src;
+          }
+        } catch {
+          /* fall back to any public src on the element */
+        }
+
         setIsPlaying(true);
-        setStatusMsg({ type: 'info', text: 'Session opened. Playback started!' });
+        setStatusMsg({ type: 'info', text: 'Session opened — streaming, metered per second.' });
 
         if (audioRef.current) {
           audioRef.current.currentTime = 0;
-          audioRef.current.play().catch(e => console.log('Audio autoplay blocked'));
+          audioRef.current.play().catch(() => undefined);
         }
 
         timerRef.current = setInterval(() => {
@@ -290,6 +304,7 @@ export default function MediaPlayer() {
     setCurrentTime(0);
     setSessionId(null);
     setStatusMsg(null);
+    setDecryptedUrl(null);
 
     // Pull the live on-chain config (real per-second rate) + the listener's USDC allowance.
     let cancelled = false;
@@ -383,8 +398,8 @@ export default function MediaPlayer() {
   return (
     <div className="grid md:grid-cols-3 gap-8">
       {/* Playback controller */}
-      {selectedWork.url && selectedWork.category === 'music' && (
-        <audio ref={audioRef} src={selectedWork.url} className="hidden" />
+      {(selectedWork.category === 'music' || selectedWork.mode === 'TIMED') && (
+        <audio ref={audioRef} src={decryptedUrl ?? selectedWork.url ?? undefined} className="hidden" />
       )}
 
       {/* Works List */}
