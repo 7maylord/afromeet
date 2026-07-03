@@ -154,7 +154,7 @@ export class BlockchainService implements OnModuleInit {
     const logs = await this.provider.getLogs({
       address: escrowAddr,
       topics: [settledTopic, null, tokenTopics], // topic2 = tokenId (OR match)
-      fromBlock: 0,
+      fromBlock: 50000000, // ponytail: Arc prunes history; contracts deployed after this block
       toBlock: 'latest',
     });
 
@@ -173,7 +173,7 @@ export class BlockchainService implements OnModuleInit {
     const logs = await this.provider.getLogs({
       address: dao,
       topics: [topic],
-      fromBlock: 0,
+      fromBlock: 50000000, // ponytail: Arc prunes history; contracts deployed after this block
       toBlock: 'latest',
     });
     const daoC = new ethers.Contract(dao, CREATOR_DAO_ABI, this.provider);

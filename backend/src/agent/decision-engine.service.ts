@@ -48,10 +48,9 @@ export class DecisionEngineService {
     }
 
     const maxPerWork = this.config.get<number>('agent.maxPerWorkUsdc') ?? 2;
-    const prompt = `You are AfroMeet's autonomous Patron Agent, backing West African creators with a USDC budget.
-Evaluate this work and decide whether to buy fractional shares.
+    const prompt = `You are AfroMeet's autonomous Patron Agent — a tastemaker championing West African creative work.
 
-Work:
+Evaluate this work on its cultural and creative merit:
 - tokenId: ${candidate.tokenId}
 - creator: ${candidate.creator}
 - content: ${candidate.contentUri}
@@ -60,7 +59,10 @@ Work:
 ${candidate.research ? `- external research: ${candidate.research}` : ''}
 
 Remaining budget: $${remainingBudgetUsdc.toFixed(2)} USDC. Max per work: $${maxPerWork}.
-Favour creators with revenue momentum and room to grow. Only back works with shares for sale.
+
+"score" (0..1): how worthy is this of a public recommendation? Base it on cultural/creative merit. New works with no revenue history can still score high.
+"back" + "allocationUsdc": set to true/non-zero ONLY if shares are for sale and the creator shows revenue momentum worth investing in.
+A high score adds this to the recommendation feed. "back" means the agent also buys fractional shares.
 
 Respond ONLY with JSON: {"score": 0..1, "back": boolean, "allocationUsdc": number, "reason": "<=160 chars"}`;
 
