@@ -20,6 +20,11 @@ export const metadata: Metadata = {
   title: "AfroMeet — Africa's underground, pressed onchain",
   description:
     "Own the cut, get paid every play. Music, film, words, and images from Africa's underground — each work a share you can own, each play a USDC payment straight to the maker. Settled on Arc.",
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/afromeet-logo.png',
+  },
 };
 
 export default function RootLayout({

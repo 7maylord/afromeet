@@ -14,11 +14,16 @@ NestJS API for AfroMeet — Circle wallets, x402 discovery, per-access settlemen
 
 | Module | Responsibility |
 | ------ | -------------- |
-| `chain` → `BlockchainService` | ethers provider, contract reads, calldata encoders |
+| `blockchain` → `BlockchainService` | ethers provider, contract reads, calldata encoders |
 | `circle` → `WalletsService` | Circle wallet: provision, sign contract calls, poll txs |
 | `circle` → `Erc8004Service` | Register the agent + record reputation + update metadata |
 | `access` → `NanopaymentGuard` + `AccessController` | x402 discovery gate + metered streaming sessions |
 | `agent` → `AgentService` + `DecisionEngineService` | Euterpe's decision loop (cron + manual trigger) |
+| `works` → `WorksService` | AES-256-GCM encrypt, pin to IPFS, bind key to tokenId |
+| `creator` → `CreatorController` | Earnings + paid-access count, read from chain |
+| `dao` → `DaoService` | Treasury, proposals, unsigned vote/propose tx |
+| `media-vault` → `MediaVaultService` | Server-side AES key store (MongoDB or in-memory) |
+| `services` → `ServicesService` | x402 marketplace: search, inspect, pay via Circle CLI |
 
 ## Setup
 
@@ -60,6 +65,7 @@ Put `walletId` in `CIRCLE_WALLET_ID`, fund the returned address with testnet USD
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
+| GET | `/` | Root — name + link to `/docs` |
 | GET | `/health` | Liveness + Arc connection |
 | POST | `/works/upload` | **Encrypt** + pin a work to IPFS; returns the tokenURI + uploadId |
 | POST | `/works/:tokenId/link` | Bind the encrypted upload's key to the minted tokenId |

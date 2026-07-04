@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { BlockchainService } from './blockchain/blockchain.service';
 import { WalletsService } from './circle/wallets.service';
 
@@ -12,12 +12,20 @@ export class AppController {
   ) {}
 
   @ApiOperation({ summary: 'Root' })
+  @ApiResponse({ status: 200, schema: { example: { name: 'AfroMeet API', docs: '/docs' } } })
   @Get()
   root() {
-    return { name: 'AfroMeet API', docs: '/api' };
+    return { name: 'AfroMeet API', docs: '/docs' };
   }
 
-  @ApiOperation({ summary: 'Liveness + proof the Arc connection and Circle wallet are wired' })
+  @ApiOperation({ summary: 'Liveness — Arc connection + Circle wallet readiness' })
+  @ApiResponse({
+    status: 200,
+    description: 'status: ok · arc: chainId + blockNumber · agentWallet: address · circleReady: boolean',
+    schema: {
+      example: { status: 'ok', arc: { chainId: 5042002, blockNumber: 123456 }, agentWallet: '0xf993…', circleReady: true },
+    },
+  })
   @Get('health')
   async health() {
     const provider = this.blockchain.getProvider();
