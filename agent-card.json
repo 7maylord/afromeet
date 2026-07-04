@@ -1,6 +1,6 @@
 {
-  "name": "AfroMeet Patron Agent",
-  "description": "An autonomous patron of West African creators. It discovers new music, film, writing, art and photography on AfroMeet, samples works by paying per-access nanopayments via x402, evaluates them using on-chain access-revenue momentum, and backs promising creators by buying fractional shares and streaming — all settled in USDC on Arc.",
+  "name": "Euterpe — AfroMeet Patron Agent",
+  "description": "Euterpe is AfroMeet's autonomous patron of African creators. She discovers new music, film, writing, art and photography on AfroMeet, samples works by paying per-access nanopayments via x402, evaluates them (Claude judgment + on-chain access-revenue momentum), and backs promising creators by buying fractional shares and streaming — all settled in USDC on Arc.",
   "image": "https://gold-perfect-rook-553.mypinata.cloud/ipfs/bafybeihegsoz6rseanzl7a33ewzuly2avum3356ry5r6qi3villzv7c5im",
   "url": "https://afromeet-x.vercel.app",
   "version": "1.0.0",
@@ -20,7 +20,7 @@
   },
   "provider": {
     "name": "AfroMeet",
-    "description": "Decentralised platform for West African creatives to own, monetise and govern their work onchain."
+    "description": "Decentralised platform for African creatives to own, monetise and govern their work onchain."
   },
   "skills": [
     {

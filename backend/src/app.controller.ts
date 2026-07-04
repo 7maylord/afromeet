@@ -11,6 +11,12 @@ export class AppController {
     private readonly wallets: WalletsService,
   ) {}
 
+  @ApiOperation({ summary: 'Root' })
+  @Get()
+  root() {
+    return { name: 'AfroMeet API', docs: '/api' };
+  }
+
   @ApiOperation({ summary: 'Liveness + proof the Arc connection and Circle wallet are wired' })
   @Get('health')
   async health() {

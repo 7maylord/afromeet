@@ -48,10 +48,10 @@ export default function AgentPicks() {
         <div>
           <h3 className="flex items-center gap-2 text-lg font-semibold text-zinc-100">
             <Sparkles className="h-5 w-5 text-kente-gold" />
-            What the AfroMeet Agent is enjoying today
+            What Euterpe is enjoying today
           </h3>
           <p className="mt-1 text-sm text-zinc-400">
-            Works our autonomous Patron Agent paid to access and liked
+            Works Euterpe, AfroMeet&apos;s patron agent, paid to access and liked
             {agentId ? ` · ERC-8004 #${agentId}` : ''}. Curated, on-chain recommendations.
           </p>
         </div>
@@ -66,7 +66,7 @@ export default function AgentPicks() {
 
       {picks.length === 0 ? (
         <div className="mt-6 rounded-xl border border-dashed border-zinc-800 py-10 text-center text-zinc-500">
-          The agent hasn’t picked anything yet — trigger a run from the Agent monitor.
+          Euterpe hasn’t picked anything yet — trigger a run from her console.
         </div>
       ) : (
         <div className="mt-4 overflow-x-auto">
@@ -75,7 +75,7 @@ export default function AgentPicks() {
               <tr className="border-b border-zinc-800">
                 <th className="py-2 pr-4">Work</th>
                 <th className="py-2 pr-4">Creator</th>
-                <th className="py-2 pr-4">The agent’s take</th>
+                <th className="py-2 pr-4">Euterpe’s take</th>
                 <th className="py-2 pr-4">Score</th>
                 <th className="py-2 pr-4">Paid</th>
                 <th className="py-2 pr-4">Status</th>

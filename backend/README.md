@@ -1,6 +1,6 @@
 # AfroMeet Backend
 
-NestJS API for AfroMeet — Circle wallets, x402 discovery, per-access settlement, and the autonomous **Patron Agent**. Talks to the contracts on **Arc Testnet** via ethers v6, and signs onchain through a Circle developer-controlled wallet.
+NestJS API for AfroMeet — Circle wallets, x402 discovery, per-access settlement, and **Euterpe**, the autonomous Patron Agent. Talks to the contracts on **Arc Testnet** via ethers v6, and signs onchain through a Circle developer-controlled wallet.
 
 ## Stack
 
@@ -18,7 +18,7 @@ NestJS API for AfroMeet — Circle wallets, x402 discovery, per-access settlemen
 | `circle` → `WalletsService` | Circle wallet: provision, sign contract calls, poll txs |
 | `circle` → `Erc8004Service` | Register the agent + record reputation + update metadata |
 | `access` → `NanopaymentGuard` + `AccessController` | x402 discovery gate + metered streaming sessions |
-| `agent` → `AgentService` + `DecisionEngineService` | The Patron Agent loop (cron + manual trigger) |
+| `agent` → `AgentService` + `DecisionEngineService` | Euterpe's decision loop (cron + manual trigger) |
 
 ## Setup
 
@@ -102,9 +102,10 @@ inform each evaluation. Defaults to **Base Sepolia** (`SERVICES_CHAIN=BASE-SEPOL
 for the mainnet directory (real USDC, more web-research services). Every payment is capped by
 `SERVICES_MAX_USDC`; leave `CIRCLE_SERVICES_WALLET` empty to disable the leg.
 
-## The Patron Agent
+## Euterpe — the Patron Agent
 
-`discover` (enumerate active works) → `sample` (pay the per-access nanopayment to *consume* the work) → `research` (buy external context via x402 services) → `evaluate` (Claude scores using on-chain revenue momentum) → **like** (records a public pick) → optionally `backWork` (approve + `buyShares`) → `recordReputation` (ERC-8004). Deterministic guardrails (budget caps, share math) wrap the model's judgment. Runs on a 30-minute cron or via `POST /agent/run`; its likes surface at `GET /agent/picks` as a recommendation feed.
+AfroMeet's resident selector (named for the muse of music). Her loop:
+`discover` (enumerate active works) → `sample` (pay the per-access nanopayment to *consume* the work) → `research` (buy external context via x402 services) → `evaluate` (Claude scores using on-chain revenue momentum) → **like** (records a public pick) → optionally `backWork` (approve + `buyShares`) → `recordReputation` (ERC-8004). Deterministic guardrails (budget caps, share math) wrap the model's judgment. Runs on a 30-minute cron or via `POST /agent/run`; her likes surface at `GET /agent/picks` as a recommendation feed.
 
 ## Tests
 

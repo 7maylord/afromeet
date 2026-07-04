@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
+import { useWallets } from "@privy-io/react-auth";
 import { useState, useEffect } from "react";
 import {
   TrendingUp,
@@ -24,7 +24,7 @@ interface EarningsStats {
 }
 
 export default function CreatorDashboard() {
-  const { user } = usePrivy();
+  const { wallets } = useWallets();
   const [stats, setStats] = useState<EarningsStats>({
     totalUSDC: 284.5,
     accessCount: 14200,
@@ -34,18 +34,15 @@ export default function CreatorDashboard() {
   const [activeTab, setActiveTab] = useState<
     "created" | "owned" | "memberships"
   >("created");
-  const userAddress =
-    user?.wallet?.address ||
-    process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ||
-    "0xef0ee06ebfb7536dfce6db0c83aa460ef3ed8322";
+  const userAddress = wallets[0]?.address;
 
   // Fetch earnings from backend
   useEffect(() => {
     async function fetchEarnings() {
-      if (!user?.wallet?.address) return;
+      if (!userAddress) return;
       try {
         const res = await fetch(
-          `${BACKEND_URL}/creator/${user.wallet.address}/earnings`,
+          `${BACKEND_URL}/creator/${userAddress}/earnings`,
         ).then((r) => r.json());
         // Map backend responses to stats
         if (res && res.totalEarnings) {
@@ -62,7 +59,7 @@ export default function CreatorDashboard() {
       }
     }
     fetchEarnings();
-  }, [user?.wallet?.address]);
+  }, [userAddress]);
 
   // Seeded works galleries
   const createdWorks = [

@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AfroMeet Frontend
 
-## Getting Started
+The web app for **AfroMeet** — where Africa's underground gets pressed onchain. Creators mint work as NFTs, get paid per play/read/view in USDC on Arc, fractionalise ownership, and govern via fan DAOs. Built with **Next.js 16**, **Privy** (wallet auth), **ethers v6**, and **Tailwind v4**.
 
-First, run the development server:
+> ⚠️ This is Next.js **16** — APIs and conventions differ from older versions. See [AGENTS.md](AGENTS.md); read the relevant guide in `node_modules/next/dist/docs/` before changing framework-level code.
+
+## Design language — "underground dubplate"
+
+A liquid-glass system layered over a boomerang video hero. **Volt blue** (`#2563EB`) is the machine/agent/chrome layer; **ember** (`#E0965A`) marks money (USDC, earnings). Helvetica for headlines/body, **Space Mono** for the on-chain ledger (codes, tx hashes, rates, logs). Design tokens live in [app/globals.css](app/globals.css).
+
+## Meet Euterpe
+
+The landing page and workspace surface **Euterpe**, AfroMeet's autonomous **Patron Agent** (named for the muse of music). The hero's bottom-right **"ON AIR" console** is her live transmitter — Arc's block height reads as a broadcast frequency, her latest pick scrolls past like a station ID, all polled live from the backend (`/health`, `/agent/status`, `/agent/picks`). Her console and picks feed live under the **Euterpe** tab in the workspace.
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env   # fill NEXT_PUBLIC_* addresses + Privy app id (see .env)
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Needs the [backend](../backend/README.md) running (default `http://localhost:3000` via `NEXT_PUBLIC_BACKEND_URL`) for live agent status, catalogue, earnings, and DAO data — panels fall back to seeded data when it's offline.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+app/
+├── page.tsx          Landing — hero + Catalogue / Creators / Euterpe / Manifesto
+├── app/page.tsx      Authenticated workspace (tabbed)
+├── layout.tsx        Fonts (Helvetica webfont + Space Mono) + providers
+└── globals.css       Design tokens + glass/pulse/marquee classes
 
-## Learn More
+components/
+├── on-air-console.tsx    Euterpe's live "ON AIR" transmitter (landing signature)
+├── afromeet-header.tsx   Workspace header (USDC balance, wallet)
+├── media-player.tsx      Per-second metered streaming + discrete unlock (x402)
+├── mint-form.tsx         Creator Studio — mint, set access terms + royalty splits
+├── marketplace-panel.tsx Buy NFTs / fractional shares / claim vault revenue
+├── dao-panel.tsx         Creator DAO — proposals + VIBE voting
+├── creator-dashboard.tsx Earnings + owned works
+├── agent-monitor.tsx     Euterpe's console + manual run trigger
+└── agent-picks.tsx       What Euterpe is enjoying (on-chain recommendation feed)
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Build
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm build   # next build (Turbopack) — fetches Space Mono at build time, needs network
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deployed at https://afromeet-x.vercel.app.

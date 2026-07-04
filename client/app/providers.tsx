@@ -37,7 +37,7 @@ export function Providers({ children }: { children: ReactNode }) {
         appearance: {
           theme: 'dark',
           accentColor: '#D97706', // Gold accent
-          logo: '/logo.png',
+          logo: '/afromeet-logo.jpg',
           showWalletLoginFirst: true,
         },
         defaultChain: arcTestnet,

@@ -37,64 +37,63 @@ export default function AppHome() {
 
   if (!ready || !authenticated) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400 gap-3">
-        <Loader2 className="w-8 h-8 animate-spin text-kente-gold" />
-        <p className="text-sm font-semibold tracking-wider">Authenticating session...</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-ink text-white/60 kente-pattern-bg">
+        <Loader2 className="h-8 w-8 animate-spin text-volt" />
+        <p className="font-mono text-xs uppercase tracking-[0.2em]">Tuning in…</p>
       </div>
     );
   }
 
   const tabs = [
-    { id: 'discover' as TabId, label: 'Discover & Player', icon: Play },
-    { id: 'studio' as TabId, label: 'Creator Studio', icon: PlusCircle },
-    { id: 'marketplace' as TabId, label: 'Marketplace & Vaults', icon: ShoppingBag },
+    { id: 'discover' as TabId, label: 'Discover', icon: Play },
+    { id: 'studio' as TabId, label: 'Studio', icon: PlusCircle },
+    { id: 'marketplace' as TabId, label: 'Market & Vaults', icon: ShoppingBag },
     { id: 'daos' as TabId, label: 'Creator DAOs', icon: Users },
-    { id: 'dashboard' as TabId, label: 'Dashboard & Profile', icon: TrendingUp },
-    { id: 'agent' as TabId, label: 'Patron Agent Logs', icon: Cpu }
+    { id: 'dashboard' as TabId, label: 'Earnings', icon: TrendingUp },
+    { id: 'agent' as TabId, label: 'Euterpe', icon: Cpu }
   ];
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col relative overflow-hidden kente-pattern-bg">
-      <div className="absolute inset-0 bg-zinc-950/90 z-0"></div>
-
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-ink text-bone kente-pattern-bg">
       {/* Main header */}
       <AfroMeetHeader />
 
       {/* Main app body */}
-      <div className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-6 py-8 flex flex-col md:flex-row gap-8">
-        
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-6 py-8 md:flex-row">
+
         {/* Sidebar tabs */}
-        <aside className="w-full md:w-64 flex flex-col gap-2 bg-zinc-900/30 p-3 rounded-2xl border border-zinc-900 backdrop-blur-md h-fit">
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest px-3 mb-2 block">
+        <aside className="glass flex h-fit w-full flex-col gap-2 rounded-2xl p-3 md:w-64">
+          <span className="mb-2 block px-3 font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-white/35">
             Workspace
           </span>
-          
+
           <div className="space-y-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
+              const active = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all ${
-                    activeTab === tab.id
-                      ? 'bg-kente-gold text-zinc-950 font-bold shadow-md shadow-kente-gold/10'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'
+                  className={`flex w-full items-center gap-3 rounded-xl border-l-2 px-4 py-3 text-sm tracking-wide transition-all ${
+                    active
+                      ? 'border-volt bg-volt/12 text-bone'
+                      : 'border-transparent text-white/50 hover:bg-white/[0.04] hover:text-bone'
                   }`}
                 >
-                  <Icon className="w-4 h-4 shrink-0" />
+                  <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-volt' : ''}`} />
                   {tab.label}
                 </button>
               );
             })}
           </div>
 
-          <div className="border-t border-zinc-800/80 mt-4 pt-4 px-3 flex flex-col gap-2">
+          <div className="mt-4 flex flex-col gap-2 border-t border-white/8 px-3 pt-4">
             <button
               onClick={() => router.push('/')}
-              className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5"
+              className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-white/40 transition-colors hover:text-bone"
             >
-              <ArrowLeft className="w-3 h-3" /> Back to Landing Page
+              <ArrowLeft className="h-3 w-3" /> Back to landing
             </button>
           </div>
         </aside>

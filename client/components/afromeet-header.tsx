@@ -1,46 +1,41 @@
 'use client';
 
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { Wallet, LogOut, Search, RefreshCw } from 'lucide-react';
+import AfroMark from '@/components/afro-mark';
 
 const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_8a4be899b9561216f7e12003014260df2d070beec86b3207438f8360019cfaa3';
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x3600000000000000000000000000000000000000';
 
-export default function AfroMeetHeader() {
-  const { logout, user } = usePrivy();
-  const router = useRouter();
-  
-  const [balance, setBalance] = useState<string>('0.00');
-  const [loading, setLoading] = useState<boolean>(false);
-  const userAddress = user?.wallet?.address;
+async function readBalance(address: string): Promise<string> {
+  const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
+  const usdc = new ethers.Contract(
+    USDC_ADDRESS,
+    ['function balanceOf(address) view returns (uint256)'],
+    provider
+  );
+  const bal = await usdc.balanceOf(address);
+  return (Number(bal) / 1e6).toFixed(2);
+}
 
-  const fetchBalance = async () => {
-    if (!userAddress) return;
-    setLoading(true);
-    try {
-      const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
-      const usdc = new ethers.Contract(
-        USDC_ADDRESS,
-        ['function balanceOf(address) view returns (uint256)'],
-        provider
-      );
-      const bal = await usdc.balanceOf(userAddress);
-      setBalance((Number(bal) / 1e6).toFixed(2));
-    } catch (err) {
-      console.error('Error fetching balance:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+export default function AfroMeetHeader() {
+  const { logout } = usePrivy();
+  const { wallets } = useWallets();
+  const router = useRouter();
+
+  const [balance, setBalance] = useState<string>('0.00');
+  const userAddress = wallets[0]?.address;
 
   useEffect(() => {
-    fetchBalance();
-    const interval = setInterval(fetchBalance, 20000);
-    return () => clearInterval(interval);
+    if (!userAddress) return;
+    let cancelled = false;
+    const run = () => readBalance(userAddress).then(b => { if (!cancelled) setBalance(b); }).catch(console.error);
+    run();
+    const interval = setInterval(run, 20000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [userAddress]);
 
   const handleLogout = async () => {
@@ -53,69 +48,61 @@ export default function AfroMeetHeader() {
     : 'Not Connected';
 
   return (
-    <header className="w-full border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md px-6 py-4 relative z-25">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+    <header className="glass relative z-25 w-full border-b border-white/5 px-6 py-4">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
         {/* Brand */}
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/')}>
-          <Image 
-            src="/logo.png" 
-            alt="AfroMeet Logo" 
-            width={38} 
-            height={38}
-            className="rounded-full shadow-lg"
-          />
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-white">
-              Afro<span className="text-kente-gold">Meet</span>
-            </h1>
-            <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold block -mt-1">
-              Creative Economy
+        <div className="flex cursor-pointer items-center gap-2.5" onClick={() => router.push('/')}>
+          <AfroMark size={20} className="text-ember" />
+          <div className="leading-none">
+            <h1 className="font-display text-lg font-bold lowercase tracking-tight"><span className="text-ember">afro</span><span className="text-volt">meet</span></h1>
+            <span className="mt-0.5 block font-mono text-[9px] uppercase tracking-[0.2em] text-white/40">
+              Africa · pressed onchain
             </span>
           </div>
         </div>
 
         {/* Global Search Bar */}
         <div className="relative w-full max-w-sm">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-zinc-500">
-            <Search className="w-4 h-4" />
+          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-white/40">
+            <Search className="h-4 w-4" />
           </span>
           <input
             type="text"
-            placeholder="Search creators or works..."
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-full pl-9 pr-4 py-1.5 text-sm text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-kente-gold/50 focus:ring-1 focus:ring-kente-gold/30 transition-all"
+            placeholder="Search creators or works…"
+            className="w-full rounded-xl border border-white/8 bg-white/[0.03] py-2 pl-9 pr-4 text-sm text-bone placeholder-white/35 transition-all focus:border-volt/60 focus:outline-none focus:ring-1 focus:ring-volt/40"
           />
         </div>
 
         {/* User Status */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {/* USDC Balance */}
           {userAddress && (
-            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-full px-3 py-1 text-xs">
-              <span className="text-zinc-500">USDC:</span>
-              <span className="font-mono font-bold text-white">${balance}</span>
-              <button 
-                onClick={fetchBalance}
-                disabled={loading}
-                className={`text-zinc-500 hover:text-white transition-colors ml-1 ${loading ? 'animate-spin' : ''}`}
+            <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-1.5 text-xs">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-white/40">USDC</span>
+              <span className="font-mono font-bold text-ember">${balance}</span>
+              <button
+                onClick={() => userAddress && readBalance(userAddress).then(setBalance).catch(console.error)}
+                className="ml-1 text-white/40 transition-colors hover:text-bone"
+                aria-label="Refresh balance"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
 
           {/* Wallet address and LogOut */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-full px-3.5 py-1 text-xs font-mono text-zinc-300">
-              <Wallet className="w-3.5 h-3.5 text-kente-gold" />
+            <div className="flex items-center gap-1.5 rounded-xl border border-white/8 bg-white/[0.03] px-3.5 py-1.5 font-mono text-xs text-bone/80">
+              <Wallet className="h-3.5 w-3.5 text-volt" />
               {truncatedAddress}
             </div>
 
             <button
               onClick={handleLogout}
-              className="p-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 hover:text-red-400 text-zinc-400 rounded-full transition-all"
+              className="rounded-xl border border-white/8 bg-white/[0.03] p-2 text-white/50 transition-all hover:bg-white/[0.06] hover:text-red-400"
               title="Logout"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>

@@ -22,10 +22,10 @@ interface LogLine {
 }
 
 const DEFAULT_LOGS: LogLine[] = [
-  { timestamp: '14:48:02', text: 'Patron Agent decision loop started.', type: 'info' },
+  { timestamp: '14:48:02', text: 'Euterpe decision loop started.', type: 'info' },
   { timestamp: '14:48:05', text: 'Scanning on-chain catalogue via AccessRegistry... Found 3 works.', type: 'info' },
   { timestamp: '14:48:10', text: 'Paid discovery access nanopayment ($0.002 USDC) to sample "Lagos Grooves & Rhythms".', type: 'info' },
-  { timestamp: '14:48:15', text: 'Taste brief evaluation: Claude Sonnet scored work at 0.85/1.0 (Threshold: 0.60).', type: 'success' },
+  { timestamp: '14:48:15', text: 'Euterpe evaluated work at 0.85/1.0 (Claude Sonnet · threshold 0.60).', type: 'success' },
   { timestamp: '14:48:18', text: 'Evaluation analysis: Strong Afrobeat baseline, high on-chain access-revenue momentum.', type: 'info' },
   { timestamp: '14:48:22', text: 'Decision: Backing creator. Depositing $2.50 USDC to purchase 500 vault shares.', type: 'success' },
   { timestamp: '14:48:26', text: 'Tx cleared on Arc. Shares owned: 500. Share buy hash: 0x5a31b7d5e...0fa9', type: 'success' }
@@ -86,7 +86,7 @@ export default function AgentMonitor() {
         ...prev,
         newLog('Operator command processed. Querying catalog...', 'info'),
         newLog('Sampling recent works for evaluation...', 'info'),
-        newLog('Claude Agent taste evaluations complete. Finished agent pass.', 'success')
+        newLog('Euterpe taste evaluations complete. Finished agent pass.', 'success')
       ]);
     } catch (err) {
       // Mock run simulation for visual presentation if offline
@@ -95,7 +95,7 @@ export default function AgentMonitor() {
           ...prev,
           newLog('Operator command processed. Scanning catalog...', 'info'),
           newLog('Sampling work #3 (Egungun Masquerade Art) — paid discovery fee $0.0005 USDC.', 'info'),
-          newLog('Claude taste evaluation: Score 0.45/1.0 (Sub-threshold). Skipping purchase.', 'warn'),
+          newLog('Euterpe taste evaluation: Score 0.45/1.0 (Sub-threshold). Skipping purchase.', 'warn'),
           newLog('Agent pass completed successfully.', 'success')
         ]);
         setBalance('9.9995');
@@ -115,7 +115,7 @@ export default function AgentMonitor() {
         <div className="glass rounded-xl p-5 border border-zinc-800/80 flex items-center justify-between">
           <div>
             <span className="text-zinc-500 text-xs font-semibold uppercase tracking-wider block">
-              Agent Balance (Arc)
+              Euterpe balance (Arc)
             </span>
             <p className="font-mono text-2xl font-bold text-white mt-1">
               ${balance} <span className="text-xs text-zinc-500 font-sans font-normal">USDC</span>
@@ -158,7 +158,7 @@ export default function AgentMonitor() {
         
         <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4 z-10">
           <h4 className="font-bold text-white text-sm flex items-center gap-2">
-            <Terminal className="w-4.5 h-4.5 text-kente-gold" /> Patron Agent Console Logs
+            <Terminal className="w-4.5 h-4.5 text-kente-gold" /> Euterpe · Console Logs
           </h4>
           
           <div className="flex items-center gap-2">
@@ -205,7 +205,7 @@ export default function AgentMonitor() {
 
         {/* Footnote */}
         <div className="text-[10px] text-zinc-500 pt-3 border-t border-zinc-900 mt-4 flex items-center justify-between">
-          <span className="truncate">Agent Wallet: {agentAddress}</span>
+          <span className="truncate">Euterpe wallet: {agentAddress}</span>
           <span className="font-mono text-zinc-600">Arc L1 RPC Node OK</span>
         </div>
       </div>
