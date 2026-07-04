@@ -298,13 +298,15 @@ export default function MediaPlayer() {
   };
 
   useEffect(() => {
-    // Reset state on work change
+    // Reset state on work change (intentional — a new work starts a fresh session).
+    /* eslint-disable react-hooks/set-state-in-effect */
     setIsPlaying(false);
     if (timerRef.current) clearInterval(timerRef.current);
     setCurrentTime(0);
     setSessionId(null);
     setStatusMsg(null);
     setDecryptedUrl(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     // Pull the live on-chain config (real per-second rate) + the listener's USDC allowance.
     let cancelled = false;

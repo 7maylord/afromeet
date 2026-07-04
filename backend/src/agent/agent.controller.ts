@@ -3,6 +3,7 @@ import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AgentService } from './agent.service';
 import { WalletsService } from '../circle/wallets.service';
 import { Erc8004Service } from '../circle/erc8004.service';
+import { BlockchainService } from '../blockchain/blockchain.service';
 
 @ApiTags('agent')
 @Controller('agent')
@@ -11,22 +12,31 @@ export class AgentController {
     private readonly agent: AgentService,
     private readonly wallets: WalletsService,
     private readonly erc8004: Erc8004Service,
+    private readonly blockchain: BlockchainService,
   ) {}
 
-  @ApiOperation({ summary: 'Agent wallet address, readiness, and ERC-8004 agent id' })
+  @ApiOperation({ summary: 'Agent wallet address, readiness, ERC-8004 id, and live USDC balance' })
   @ApiResponse({
     status: 200,
-    description: 'wallet: Arc address · ready: Circle SDK initialised · erc8004AgentId: onchain agent NFT id',
+    description: 'wallet: Arc address · ready: Circle SDK initialised · erc8004AgentId · balanceUsdc: raw USDC (6dp)',
     schema: {
-      example: { wallet: '0xf993…', ready: true, erc8004AgentId: '839408' },
+      example: { wallet: '0xf993…', ready: true, erc8004AgentId: '839408', balanceUsdc: '9500000' },
     },
   })
   @Get('status')
-  status() {
+  async status() {
+    const wallet = this.wallets.getAddress();
+    let balanceUsdc = '0';
+    try {
+      if (wallet) balanceUsdc = (await this.blockchain.usdcBalanceOf(wallet)).toString();
+    } catch {
+      /* RPC unavailable — report zero rather than fail the status probe */
+    }
     return {
-      wallet: this.wallets.getAddress(),
+      wallet,
       ready: this.wallets.isReady(),
       erc8004AgentId: this.erc8004.getAgentId()?.toString() ?? null,
+      balanceUsdc,
     };
   }
 

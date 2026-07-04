@@ -82,6 +82,45 @@ export class BlockchainService implements OnModuleInit {
     return this.provider;
   }
 
+  /** Deploy floor: contracts live above this block, so backfill never starts lower. */
+  private static readonly DEPLOY_BLOCK = 50000000;
+  /** Arc rejects any eth_getLogs spanning more than 100k blocks. Stay safely under. */
+  private static readonly MAX_LOG_RANGE = 90000;
+
+  /** Accumulated logs per (address+topic) filter, with the last block already scanned. */
+  private readonly logCache = new Map<string, { logs: ethers.Log[]; cursor: number }>();
+
+  /**
+   * Incremental event reader for Arc. First call backfills from DEPLOY_BLOCK in ≤90k-block
+   * windows (Arc caps eth_getLogs at a 100k range); every later call only scans the blocks
+   * mined since the last poll and appends them. Reads stay cheap and never re-scan history.
+   * ponytail: in-memory cache → one backfill per process boot. Persist to Mongo if restarts
+   * during judging become costly.
+   */
+  private async syncLogs(
+    key: string,
+    address: string,
+    topics: (string | string[] | null)[],
+  ): Promise<ethers.Log[]> {
+    const latest = await this.provider.getBlockNumber();
+    const entry =
+      this.logCache.get(key) ??
+      { logs: [] as ethers.Log[], cursor: BlockchainService.DEPLOY_BLOCK - 1 };
+
+    for (
+      let from = entry.cursor + 1;
+      from <= latest;
+      from += BlockchainService.MAX_LOG_RANGE + 1
+    ) {
+      const to = Math.min(from + BlockchainService.MAX_LOG_RANGE, latest);
+      const logs = await this.provider.getLogs({ address, topics, fromBlock: from, toBlock: to });
+      entry.logs.push(...logs);
+      entry.cursor = to;
+    }
+    this.logCache.set(key, entry);
+    return entry.logs;
+  }
+
   // --- Reads ----------------------------------------------------------------
 
   async getAccessConfig(tokenId: bigint | number | string): Promise<AccessConfig> {
@@ -150,32 +189,26 @@ export class BlockchainService implements OnModuleInit {
 
     const iface = new ethers.Interface(ACCESS_ESCROW_ABI);
     const settledTopic = iface.getEvent('Settled')!.topicHash;
-    const tokenTopics = tokenIds.map((id) => ethers.zeroPadValue(ethers.toBeHex(id), 32));
-    const logs = await this.provider.getLogs({
-      address: escrowAddr,
-      topics: [settledTopic, null, tokenTopics], // topic2 = tokenId (OR match)
-      fromBlock: 50000000, // ponytail: Arc prunes history; contracts deployed after this block
-      toBlock: 'latest',
-    });
+    // Accumulate every Settled event once (stable cursor), then filter to this creator's tokens.
+    const logs = await this.syncLogs(`settled:${escrowAddr}`, escrowAddr, [settledTopic]);
+    const want = new Set(tokenIds.map((id) => BigInt(id)));
 
     let total = 0n;
+    let count = 0;
     for (const log of logs) {
       const parsed = iface.parseLog(log);
-      if (parsed) total += parsed.args.amount as bigint;
+      if (!parsed || !want.has(parsed.args.tokenId as bigint)) continue;
+      total += parsed.args.amount as bigint;
+      count++;
     }
-    return { totalAmount: total, count: logs.length };
+    return { totalAmount: total, count };
   }
 
   /** A creator DAO's proposals, read from ProposalCreated events + on-chain state/votes. */
   async getProposals(dao: string): Promise<Proposal[]> {
     const iface = new ethers.Interface(CREATOR_DAO_ABI);
     const topic = iface.getEvent('ProposalCreated')!.topicHash;
-    const logs = await this.provider.getLogs({
-      address: dao,
-      topics: [topic],
-      fromBlock: 50000000, // ponytail: Arc prunes history; contracts deployed after this block
-      toBlock: 'latest',
-    });
+    const logs = await this.syncLogs(`proposals:${dao.toLowerCase()}`, dao, [topic]);
     const daoC = new ethers.Contract(dao, CREATOR_DAO_ABI, this.provider);
 
     const out: Proposal[] = [];

@@ -30,9 +30,10 @@ export class DaoService {
 
   async treasury(creator: string) {
     const eco = await this.blockchain.ecosystemOf(creator);
-    if (!eco.exists) return { dao: null, treasury: null, balance: '0' };
+    if (!eco.exists) return { dao: null, treasury: null, token: null, balance: '0' };
     const balance = await this.blockchain.usdcBalanceOf(eco.treasury);
-    return { dao: eco.dao, treasury: eco.treasury, balance: balance.toString() };
+    // eco.token is the creator's VIBE governance token — the client reads the voter's balance from it.
+    return { dao: eco.dao, treasury: eco.treasury, token: eco.token, balance: balance.toString() };
   }
 
   async proposals(creator: string) {

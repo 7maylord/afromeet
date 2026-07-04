@@ -3,12 +3,11 @@
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import { 
-  Building2, 
-  Plus, 
-  Check, 
-  X, 
-  Info,
+import {
+  Building2,
+  Plus,
+  Check,
+  X,
   CheckCircle,
   Loader2,
   TrendingUp,
@@ -28,41 +27,21 @@ interface Proposal {
   endTime: string;
 }
 
-const DEFAULT_PROPOSALS: Proposal[] = [
-  {
-    id: '1',
-    title: 'Fund Lagos Music Video Shoot',
-    description: 'Disburse $350 USDC from the treasury to cover studio production and camera crew costs for the new single.',
-    status: 'Executed',
-    votesFor: 8500,
-    votesAgainst: 400,
-    endTime: '2026-06-18'
-  },
-  {
-    id: '2',
-    title: 'Buy New Synth Gear',
-    description: 'Acquire Analog Polyphonic Synthesizer to elevate audio production values for upcoming album releases.',
-    status: 'Active',
-    votesFor: 2300,
-    votesAgainst: 1200,
-    endTime: '2026-06-25'
-  }
-];
-
 export default function DaoPanel() {
   const { user, authenticated } = usePrivy();
   const { wallets } = useWallets();
   // View the connected creator's own DAO (their ecosystem). DEFAULT_CREATOR is a fallback only.
   const creator = user?.wallet?.address || DEFAULT_CREATOR;
-  const [proposals, setProposals] = useState<Proposal[]>(DEFAULT_PROPOSALS);
-  const [treasuryBalance, setTreasuryBalance] = useState<string>('120.00');
-  const [vibeBalance, setVibeBalance] = useState<number>(250);
-  
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [treasuryBalance, setTreasuryBalance] = useState<string>('0.00');
+  const [vibeBalance, setVibeBalance] = useState<number>(0);
+  const [hasDao, setHasDao] = useState<boolean>(true);
+
   // Proposal Creation
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
-  
+
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
@@ -73,21 +52,41 @@ export default function DaoPanel() {
         fetch(`${BACKEND_URL}/dao/${creator}/treasury`).then(r => r.json()),
         fetch(`${BACKEND_URL}/dao/${creator}/proposals`).then(r => r.json())
       ]);
-      
-      setTreasuryBalance((Number(treasuryRes.balance) / 1e6).toFixed(2));
-      if (proposalsRes && Array.isArray(proposalsRes)) {
-        setProposals(proposalsRes);
+
+      setHasDao(Boolean(treasuryRes.dao));
+      setTreasuryBalance((Number(treasuryRes.balance ?? 0) / 1e6).toFixed(2));
+      setProposals(Array.isArray(proposalsRes) ? proposalsRes : []);
+
+      // Real voting power: the voter's balance of this DAO's VIBE governance token.
+      const voter = user?.wallet?.address;
+      if (treasuryRes.token && voter && wallets[0]) {
+        try {
+          const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
+          const vibe = new ethers.Contract(
+            treasuryRes.token,
+            ['function balanceOf(address) view returns (uint256)'],
+            provider,
+          );
+          const bal = await vibe.balanceOf(voter);
+          setVibeBalance(Math.round(Number(ethers.formatUnits(bal, 18))));
+        } catch {
+          setVibeBalance(0);
+        }
+      } else {
+        setVibeBalance(0);
       }
     } catch (err) {
-      console.warn('Failed to fetch real-time DAO data, using fallback lists:', err);
+      console.warn('Failed to fetch DAO data:', err);
     }
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDaoData();
     const interval = setInterval(fetchDaoData, 20000);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creator]);
 
   const handleVote = async (proposalId: string, support: number) => {
     if (!authenticated || !wallets[0]) {
@@ -261,6 +260,13 @@ export default function DaoPanel() {
         )}
 
         {/* proposals iteration */}
+        {proposals.length === 0 && (
+          <p className="py-8 text-center text-xs text-zinc-500">
+            {hasDao
+              ? 'No proposals yet. Create the first one for your DAO.'
+              : 'No DAO for this wallet yet — mint a work to spin up your creator ecosystem, then govern it here.'}
+          </p>
+        )}
         <div className="space-y-4">
           {proposals.map((p) => {
             const totalVotes = p.votesFor + p.votesAgainst;

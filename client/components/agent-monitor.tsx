@@ -21,51 +21,48 @@ interface LogLine {
   type: 'info' | 'success' | 'warn';
 }
 
-const DEFAULT_LOGS: LogLine[] = [
-  { timestamp: '14:48:02', text: 'Euterpe decision loop started.', type: 'info' },
-  { timestamp: '14:48:05', text: 'Scanning on-chain catalogue via AccessRegistry... Found 3 works.', type: 'info' },
-  { timestamp: '14:48:10', text: 'Paid discovery access nanopayment ($0.002 USDC) to sample "Lagos Grooves & Rhythms".', type: 'info' },
-  { timestamp: '14:48:15', text: 'Euterpe evaluated work at 0.85/1.0 (Claude Sonnet · threshold 0.60).', type: 'success' },
-  { timestamp: '14:48:18', text: 'Evaluation analysis: Strong Afrobeat baseline, high on-chain access-revenue momentum.', type: 'info' },
-  { timestamp: '14:48:22', text: 'Decision: Backing creator. Depositing $2.50 USDC to purchase 500 vault shares.', type: 'success' },
-  { timestamp: '14:48:26', text: 'Tx cleared on Arc. Shares owned: 500. Share buy hash: 0x5a31b7d5e...0fa9', type: 'success' }
+const IDLE_LOG: LogLine[] = [
+  {
+    timestamp: '—',
+    text: 'Idle. Euterpe runs every 30 min on a cron; trigger a pass now to watch her decide live.',
+    type: 'info',
+  },
 ];
 
 export default function AgentMonitor() {
   const { authenticated } = usePrivy();
-  
-  const [logs, setLogs] = useState<LogLine[]>(DEFAULT_LOGS);
+
+  const [logs, setLogs] = useState<LogLine[]>(IDLE_LOG);
   const [agentAddress, setAgentAddress] = useState<string>(process.env.NEXT_PUBLIC_AGENT_ADDRESS ?? '');
-  const [ready, setReady] = useState<boolean>(true);
-  const [agentId, setAgentId] = useState<string>('839408');
-  const [balance, setBalance] = useState<string>('10.00');
+  const [ready, setReady] = useState<boolean>(false);
+  const [agentId, setAgentId] = useState<string>('—');
+  const [balance, setBalance] = useState<string>('0.00');
 
   const [running, setRunning] = useState<boolean>(false);
   const [loadingStats, setLoadingStats] = useState<boolean>(false);
-  
+
   const consoleBottomRef = useRef<HTMLDivElement | null>(null);
 
   const fetchAgentStats = async () => {
     setLoadingStats(true);
     try {
-      const [statusRes, healthRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/agent/status`).then(r => r.json()),
-        fetch(`${BACKEND_URL}/health`).then(r => r.json())
-      ]);
-      
+      const statusRes = await fetch(`${BACKEND_URL}/agent/status`).then(r => r.json());
       setAgentAddress(statusRes.wallet || process.env.NEXT_PUBLIC_AGENT_ADDRESS || '');
-      setReady(statusRes.ready);
-      setAgentId(statusRes.erc8004AgentId || '839408');
-    } catch (err) {
-      console.warn('Backend offline, using fallback mock stats.');
+      setReady(Boolean(statusRes.ready));
+      setAgentId(statusRes.erc8004AgentId || '—');
+      setBalance((Number(statusRes.balanceUsdc ?? 0) / 1e6).toFixed(2));
+    } catch {
+      console.warn('Backend offline — agent stats unavailable.');
     } finally {
       setLoadingStats(false);
     }
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchAgentStats();
-    consoleBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const interval = setInterval(fetchAgentStats, 20000);
+    return () => clearInterval(interval);
   }, []);
 
   const triggerAgentRun = async () => {
@@ -76,35 +73,35 @@ export default function AgentMonitor() {
       type
     });
 
-    setLogs(prev => [...prev, newLog('Manual run triggered by operator.', 'warn')]);
-    
+    setLogs(prev => [...prev, newLog('Manual run triggered — Euterpe is deciding…', 'warn')]);
+
     try {
-      // POST to `/agent/run`
-      await fetch(`${BACKEND_URL}/agent/run`, { method: 'POST' });
-      
-      setLogs(prev => [
-        ...prev,
-        newLog('Operator command processed. Querying catalog...', 'info'),
-        newLog('Sampling recent works for evaluation...', 'info'),
-        newLog('Euterpe taste evaluations complete. Finished agent pass.', 'success')
-      ]);
-    } catch (err) {
-      // Mock run simulation for visual presentation if offline
-      setTimeout(() => {
-        setLogs(prev => [
-          ...prev,
-          newLog('Operator command processed. Scanning catalog...', 'info'),
-          newLog('Sampling work #3 (Egungun Masquerade Art) — paid discovery fee $0.0005 USDC.', 'info'),
-          newLog('Euterpe taste evaluation: Score 0.45/1.0 (Sub-threshold). Skipping purchase.', 'warn'),
-          newLog('Agent pass completed successfully.', 'success')
-        ]);
-        setBalance('9.9995');
-      }, 2000);
+      // POST /agent/run returns the real RunSummary (what she sampled, liked, backed, skipped).
+      const s = await fetch(`${BACKEND_URL}/agent/run`, { method: 'POST' }).then(r => r.json());
+
+      const lines: LogLine[] = [
+        newLog(`Scanned catalogue · sampled ${s.sampled ?? 0} work(s) on a $${s.budgetUsdc ?? 0} budget.`, 'info'),
+      ];
+      for (const b of s.backed ?? []) {
+        lines.push(newLog(`Backed work #${b.tokenId}: $${b.allocationUsdc} → ${b.shares} shares. ${b.reason ?? ''}`.trim(), 'success'));
+      }
+      for (const l of s.liked ?? []) {
+        if (!(s.backed ?? []).some((b: { tokenId: string }) => b.tokenId === l.tokenId)) {
+          lines.push(newLog(`Liked work #${l.tokenId} (score ${Math.round((l.score ?? 0) * 100)}%) — ${l.note ?? ''}`.trim(), 'info'));
+        }
+      }
+      for (const skip of s.skipped ?? []) {
+        lines.push(newLog(`Skipped: ${skip}`, 'warn'));
+      }
+      lines.push(newLog('Pass complete.', 'success'));
+
+      setLogs(prev => [...prev, ...lines]);
+      fetchAgentStats(); // refresh her real on-chain USDC balance after spending
+    } catch {
+      setLogs(prev => [...prev, newLog('Run failed — backend unreachable.', 'warn')]);
     } finally {
-      setTimeout(() => {
-        setRunning(false);
-        consoleBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 2200);
+      setRunning(false);
+      setTimeout(() => consoleBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     }
   };
 
