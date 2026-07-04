@@ -35,7 +35,7 @@ export default function AgentMonitor() {
   const { authenticated } = usePrivy();
   
   const [logs, setLogs] = useState<LogLine[]>(DEFAULT_LOGS);
-  const [agentAddress, setAgentAddress] = useState<string>(process.env.NEXT_PUBLIC_AGENT_ADDRESS || '0xf99337df8acbdce3221372ea41610d38b54ca33f');
+  const [agentAddress, setAgentAddress] = useState<string>(process.env.NEXT_PUBLIC_AGENT_ADDRESS ?? '');
   const [ready, setReady] = useState<boolean>(true);
   const [agentId, setAgentId] = useState<string>('839408');
   const [balance, setBalance] = useState<string>('10.00');
@@ -53,7 +53,7 @@ export default function AgentMonitor() {
         fetch(`${BACKEND_URL}/health`).then(r => r.json())
       ]);
       
-      setAgentAddress(statusRes.wallet || process.env.NEXT_PUBLIC_AGENT_ADDRESS || '0xf99337df8acbdce3221372ea41610d38b54ca33f');
+      setAgentAddress(statusRes.wallet || process.env.NEXT_PUBLIC_AGENT_ADDRESS || '');
       setReady(statusRes.ready);
       setAgentId(statusRes.erc8004AgentId || '839408');
     } catch (err) {

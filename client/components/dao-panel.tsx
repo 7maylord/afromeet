@@ -15,8 +15,8 @@ import {
   Award
 } from 'lucide-react';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
-const DEFAULT_CREATOR = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS || '0xef0ee06ebfb7536dfce6db0c83aa460ef3ed8322';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
+const DEFAULT_CREATOR = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
 
 interface Proposal {
   id: string;

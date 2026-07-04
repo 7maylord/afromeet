@@ -20,11 +20,11 @@ import {
   Loader2
 } from 'lucide-react';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
-const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x3600000000000000000000000000000000000000';
-const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_ESCROW_ADDRESS || '0xB14a5927b20927A8812AC060c00CBE17772CcFA0';
-const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_8a4be899b9561216f7e12003014260df2d070beec86b3207438f8360019cfaa3';
-const IPFS_GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
+const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
+const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_ESCROW_ADDRESS ?? '';
+const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL ?? '';
+const IPFS_GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY ?? 'https://gateway.pinata.cloud/ipfs/';
 
 const hexToBytes = (h: string) => new Uint8Array((h.match(/.{1,2}/g) ?? []).map((b) => parseInt(b, 16)));
 
