@@ -58,3 +58,5 @@ config.staging.json
 
 # Databases
 **/chroma_db/
+DEMO_SCRIPT.md
+DEMO_SCRIPT.pdf
