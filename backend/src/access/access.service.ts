@@ -14,9 +14,10 @@ export class AccessService {
     private readonly vault: MediaVaultService,
   ) {}
 
-  /** The public catalogue: every active work on-chain with its pricing + tokenURI. */
+  /** The public catalogue: every active work on-chain with its pricing, tokenURI + vault state. */
   async catalogue() {
     const next = Number(await this.blockchain.getNextTokenId());
+    const nftAddr = this.blockchain.nftAddress();
     const works: unknown[] = [];
     for (let id = 1; id <= next; id++) {
       try {
@@ -26,6 +27,23 @@ export class AccessService {
           this.blockchain.getCreator(id),
           this.blockchain.getTokenUri(id),
         ]);
+
+        // Fractionalization state, read server-side (browsers can't reach the Arc RPC directly).
+        let vault: string | null = null;
+        let sharePriceRaw = '0';
+        let sharesForSale = 0;
+        try {
+          const v = await this.blockchain.getVaultOf(nftAddr, id);
+          if (v && v !== ethers.ZeroAddress) {
+            vault = v;
+            const info = await this.blockchain.getSaleInfo(v);
+            sharePriceRaw = info.pricePerShare.toString();
+            sharesForSale = Number(info.sharesForSale);
+          }
+        } catch {
+          /* no vault for this token */
+        }
+
         works.push({
           id: id.toString(),
           creator,
@@ -35,6 +53,9 @@ export class AccessService {
           ratePerSecondUsdc: Number(cfg.ratePerSecond) / 1e6,
           minAccessSeconds: Number(cfg.minAccessSeconds),
           tokenURI: uri,
+          vault,
+          sharePriceRaw,
+          sharesForSale,
         });
       } catch {
         /* skip unreadable token */

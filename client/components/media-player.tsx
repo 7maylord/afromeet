@@ -23,7 +23,6 @@ import {
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
 const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_ESCROW_ADDRESS ?? '';
-const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL ?? '';
 const IPFS_GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY ?? 'https://gateway.pinata.cloud/ipfs/';
 
 const hexToBytes = (h: string) => new Uint8Array((h.match(/.{1,2}/g) ?? []).map((b) => parseInt(b, 16)));
@@ -320,13 +319,15 @@ export default function MediaPlayer() {
         if (!cancelled) setRateUsdc(selectedWork.ratePerSecondUsdc ?? 0.0001);
       }
 
-      if (selectedWork.mode === 'TIMED' && user?.wallet?.address) {
+      if (selectedWork.mode === 'TIMED' && user?.wallet?.address && wallets[0]) {
         try {
-          const ro = new ethers.JsonRpcProvider(ARC_RPC_URL);
+          // Read via the wallet's provider (not the Arc RPC, which browsers can't reach) —
+          // same transport as the approve tx below.
+          const bp = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
           const usdc = new ethers.Contract(
             USDC_ADDRESS,
             ['function allowance(address owner, address spender) view returns (uint256)'],
-            ro,
+            bp,
           );
           const a: bigint = await usdc.allowance(user.wallet.address, ESCROW_ADDRESS);
           if (!cancelled) setApproved(a > BigInt(0));

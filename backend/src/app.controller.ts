@@ -1,5 +1,5 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Param } from '@nestjs/common';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { BlockchainService } from './blockchain/blockchain.service';
 import { WalletsService } from './circle/wallets.service';
 
@@ -39,5 +39,19 @@ export class AppController {
       agentWallet: this.wallets.getAddress(),
       circleReady: this.wallets.isReady(),
     };
+  }
+
+  @ApiOperation({ summary: "An address's USDC balance on Arc (server-side read — no browser CORS)" })
+  @ApiParam({ name: 'address', description: 'Wallet address (0x…)', example: '0xAbCd…' })
+  @ApiResponse({ status: 200, schema: { example: { address: '0xAbCd…', balanceRaw: '9500000' } } })
+  @Get('usdc/:address/balance')
+  async usdcBalance(@Param('address') address: string) {
+    let balanceRaw = '0';
+    try {
+      balanceRaw = (await this.blockchain.usdcBalanceOf(address)).toString();
+    } catch {
+      /* RPC unavailable — report zero rather than fail */
+    }
+    return { address, balanceRaw };
   }
 }

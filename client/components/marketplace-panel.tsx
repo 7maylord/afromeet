@@ -17,16 +17,11 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:300
 const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FRACTIONAL_VAULT_FACTORY_ADDRESS ?? '';
 const NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
-const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL ?? '';
 const IPFS_GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY ?? 'https://gateway.pinata.cloud/ipfs/';
 
-const FACTORY_ABI = ['function vaultOf(address nft, uint256 tokenId) view returns (address)'];
 const VAULT_ABI = [
-  'function saleSharePrice() view returns (uint256)',
-  'function sharesForSale() view returns (uint256)',
   'function buyShares(uint256 shareAmount)',
   'function claimRevenue() returns (uint256)',
-  'function withdrawableRevenueOf(address holder) view returns (uint256)',
 ];
 const USDC_ABI = ['function approve(address spender, uint256 amount) returns (bool)'];
 const NFT_APPROVE_ABI = ['function approve(address to, uint256 tokenId)'];
@@ -37,10 +32,14 @@ const FACTORY_WRITE_ABI = [
 const ipfsToHttp = (uri: string) =>
   uri?.startsWith('ipfs://') ? IPFS_GATEWAY + uri.slice(7) : uri;
 
+// The backend enriches the catalogue with vault state (browsers can't reach the Arc RPC directly).
 interface RawWork {
   id: string;
   creator: string;
   tokenURI: string;
+  vault: string | null;
+  sharePriceRaw: string;
+  sharesForSale: number;
 }
 
 interface MarketplaceItem {
@@ -51,11 +50,6 @@ interface MarketplaceItem {
   vaultAddress?: string;
   availableShares?: number;
   sharePriceRaw?: bigint; // USDC (6dp) per share, from the vault
-}
-
-/** Read-only provider for on-chain reads without a connected wallet. */
-function readProvider(): ethers.JsonRpcProvider | null {
-  return ARC_RPC_URL ? new ethers.JsonRpcProvider(ARC_RPC_URL) : null;
 }
 
 export default function MarketplacePanel() {
@@ -74,14 +68,11 @@ export default function MarketplacePanel() {
   const [vaultSymbol, setVaultSymbol] = useState<string>('');
   const [isFractionalizing, setIsFractionalizing] = useState<boolean>(false);
 
-  // Load the real on-chain catalogue and enrich each work with its vault state (if fractionalized).
+  // Load the real on-chain catalogue (backend already includes each work's vault state).
   const loadItems = useCallback(async () => {
     setLoading(true);
     try {
       const cat: RawWork[] = await fetch(`${BACKEND_URL}/access/catalogue`).then((r) => r.json());
-      const provider = readProvider();
-      const factory =
-        provider && FACTORY_ADDRESS ? new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, provider) : null;
 
       const mapped = await Promise.all(
         (Array.isArray(cat) ? cat : []).map(async (w) => {
@@ -97,26 +88,13 @@ export default function MarketplacePanel() {
             tokenId: w.id,
             title,
             creator: w.creator,
-            isFractionalized: false,
+            isFractionalized: Boolean(w.vault),
           };
 
-          if (factory && NFT_ADDRESS && provider) {
-            try {
-              const vaultAddr = await factory.vaultOf(NFT_ADDRESS, w.id);
-              if (vaultAddr && vaultAddr !== ethers.ZeroAddress) {
-                const vault = new ethers.Contract(vaultAddr, VAULT_ABI, provider);
-                const [price, forSale] = await Promise.all([
-                  vault.saleSharePrice(),
-                  vault.sharesForSale(),
-                ]);
-                item.isFractionalized = true;
-                item.vaultAddress = vaultAddr;
-                item.sharePriceRaw = price as bigint;
-                item.availableShares = Number(forSale);
-              }
-            } catch {
-              /* factory/vault read failed — treat as not fractionalized */
-            }
+          if (w.vault) {
+            item.vaultAddress = w.vault;
+            item.sharePriceRaw = BigInt(w.sharePriceRaw || '0');
+            item.availableShares = w.sharesForSale;
           }
           return item;
         }),

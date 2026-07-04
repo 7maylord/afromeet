@@ -3,22 +3,16 @@
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
 import { Wallet, LogOut, Search, RefreshCw } from 'lucide-react';
 import AfroMark from '@/components/afro-mark';
 
-const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL ?? '';
-const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 
+// Read the balance through the backend — the Arc RPC has no CORS headers, so the browser
+// can't call it directly, and this keeps the RPC key off the client.
 async function readBalance(address: string): Promise<string> {
-  const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
-  const usdc = new ethers.Contract(
-    USDC_ADDRESS,
-    ['function balanceOf(address) view returns (uint256)'],
-    provider
-  );
-  const bal = await usdc.balanceOf(address);
-  return (Number(bal) / 1e6).toFixed(2);
+  const res = await fetch(`${BACKEND_URL}/usdc/${address}/balance`).then((r) => r.json());
+  return (Number(res.balanceRaw ?? 0) / 1e6).toFixed(2);
 }
 
 export default function AfroMeetHeader() {
