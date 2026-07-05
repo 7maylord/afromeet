@@ -59,6 +59,7 @@ export class AccessService {
         let vault: string | null = null;
         let sharePriceRaw = '0';
         let sharesForSale = 0;
+        let totalShares = 0;
         try {
           const v = await this.blockchain.getVaultOf(nftAddr, id);
           if (v && v !== ethers.ZeroAddress) {
@@ -66,6 +67,7 @@ export class AccessService {
             const info = await this.blockchain.getSaleInfo(v);
             sharePriceRaw = info.pricePerShare.toString();
             sharesForSale = Number(info.sharesForSale);
+            totalShares = Number(info.totalShares);
           }
         } catch {
           /* no vault for this token */
@@ -85,6 +87,7 @@ export class AccessService {
           vault,
           sharePriceRaw,
           sharesForSale,
+          totalShares,
         });
       } catch {
         /* skip unreadable token */

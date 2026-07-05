@@ -11,6 +11,8 @@ import {
   Plus,
   Loader2,
   Lock,
+  Settings,
+  Tag,
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
@@ -21,6 +23,8 @@ const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000
 const VAULT_ABI = [
   'function buyShares(uint256 shareAmount)',
   'function claimRevenue() returns (uint256)',
+  'function configureSale(uint256 shares, uint256 pricePerShare)',
+  'function totalSupply() view returns (uint256)',
 ];
 const USDC_ABI = ['function approve(address spender, uint256 amount) returns (bool)'];
 const NFT_APPROVE_ABI = ['function approve(address to, uint256 tokenId)'];
@@ -36,6 +40,7 @@ interface RawWork {
   vault: string | null;
   sharePriceRaw: string;
   sharesForSale: number;
+  totalShares: number;
 }
 
 interface MarketplaceItem {
@@ -46,6 +51,7 @@ interface MarketplaceItem {
   vaultAddress?: string;
   availableShares?: number;
   sharePriceRaw?: bigint; // USDC (6dp) per share, from the vault
+  totalShares?: number; // total supply of the vault
 }
 
 export default function MarketplacePanel() {
@@ -56,6 +62,11 @@ export default function MarketplacePanel() {
   const [loading, setLoading] = useState<boolean>(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [shareQty, setShareQty] = useState<Record<string, string>>({});
+
+  // Configure Sale state – per-card inputs
+  const [saleShares, setSaleShares] = useState<Record<string, string>>({});
+  const [salePrice, setSalePrice] = useState<Record<string, string>>({});
+  const [showSaleConfig, setShowSaleConfig] = useState<Record<string, boolean>>({});
 
   const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string } | null) => {
     if (!m) return;
@@ -86,6 +97,7 @@ export default function MarketplacePanel() {
           item.vaultAddress = w.vault;
           item.sharePriceRaw = BigInt(w.sharePriceRaw || '0');
           item.availableShares = w.sharesForSale;
+          item.totalShares = w.totalShares;
         }
         return item;
       });
@@ -108,8 +120,12 @@ export default function MarketplacePanel() {
   }
 
   const handleBuyShares = async (item: MarketplaceItem) => {
-    if (!authenticated || !wallets[0] || !item.vaultAddress || !item.sharePriceRaw) {
-      setStatusMsg({ type: 'error', text: 'Connect your wallet and pick a fractionalized work.' });
+    if (!authenticated || !wallets[0]) {
+      setStatusMsg({ type: 'error', text: 'Please connect your wallet first.' });
+      return;
+    }
+    if (!item.vaultAddress || item.sharePriceRaw === undefined) {
+      setStatusMsg({ type: 'error', text: 'This work hasn\'t been fractionalized yet.' });
       return;
     }
     const qty = Math.max(1, parseInt(shareQty[item.tokenId] || '100', 10));
@@ -143,8 +159,12 @@ export default function MarketplacePanel() {
   };
 
   const handleClaimRevenue = async (item: MarketplaceItem) => {
-    if (!authenticated || !wallets[0] || !item.vaultAddress) {
-      setStatusMsg({ type: 'error', text: 'Connect your wallet and pick a vault.' });
+    if (!authenticated || !wallets[0]) {
+      setStatusMsg({ type: 'error', text: 'Please connect your wallet first.' });
+      return;
+    }
+    if (!item.vaultAddress) {
+      setStatusMsg({ type: 'error', text: 'This work hasn\'t been fractionalized yet.' });
       return;
     }
     setLoading(true);
@@ -158,6 +178,46 @@ export default function MarketplacePanel() {
       setStatusMsg({ type: 'success', text: `Revenue claimed to your wallet. Tx ${tx.hash.slice(0, 10)}…` });
     } catch (err) {
       setStatusMsg({ type: 'error', text: `Claim failed: ${(err as Error).message?.slice(0, 120) || err}` });
+    } finally {
+      setLoading(false);
+      setActionId(null);
+    }
+  };
+
+  const handleConfigureSale = async (item: MarketplaceItem) => {
+    if (!authenticated || !wallets[0]) {
+      setStatusMsg({ type: 'error', text: 'Please connect your wallet first.' });
+      return;
+    }
+    if (!item.vaultAddress) {
+      setStatusMsg({ type: 'error', text: 'This work hasn\'t been fractionalized yet.' });
+      return;
+    }
+    const shares = parseInt(saleShares[item.tokenId] || '0', 10);
+    const priceUsdc = parseFloat(salePrice[item.tokenId] || '0');
+    if (shares <= 0) {
+      setStatusMsg({ type: 'error', text: 'Enter the number of shares to list for sale.' });
+      return;
+    }
+    if (priceUsdc <= 0) {
+      setStatusMsg({ type: 'error', text: 'Set a price per share (in USDC).' });
+      return;
+    }
+    // Convert USDC amount to 6-decimal raw value
+    const priceRaw = BigInt(Math.round(priceUsdc * 1e6));
+    setLoading(true);
+    setActionId(`config-${item.tokenId}`);
+    try {
+      const signer = await getSigner();
+      setStatusMsg({ type: 'info', text: `Configuring sale: ${shares} shares @ $${priceUsdc} each…` });
+      const vault = new ethers.Contract(item.vaultAddress, VAULT_ABI, signer);
+      const tx = await vault.configureSale(shares, priceRaw);
+      await tx.wait();
+      setStatusMsg({ type: 'success', text: `Sale configured! ${shares} shares now listed @ $${priceUsdc} USDC each. Tx ${tx.hash.slice(0, 10)}…` });
+      setShowSaleConfig((s) => ({ ...s, [item.tokenId]: false }));
+      loadItems();
+    } catch (err) {
+      setStatusMsg({ type: 'error', text: `Configure sale failed: ${(err as Error).message?.slice(0, 120) || err}` });
     } finally {
       setLoading(false);
       setActionId(null);
@@ -243,31 +303,100 @@ export default function MarketplacePanel() {
                     <div className="flex items-center justify-between text-xs bg-zinc-950/40 p-2 rounded border border-zinc-850">
                       <span className="text-zinc-500">Share price:</span>
                       <span className="font-mono text-amber-400 font-bold">
-                        ${(Number(item.sharePriceRaw) / 1e6).toFixed(4)} · {item.availableShares} left
+                        {item.sharePriceRaw > 0n
+                          ? `$${(Number(item.sharePriceRaw) / 1e6).toFixed(4)} · ${item.availableShares} left`
+                          : 'Not listed for sale yet'}
                       </span>
                     </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        value={shareQty[item.tokenId] ?? '100'}
-                        onChange={(e) => setShareQty((q) => ({ ...q, [item.tokenId]: e.target.value }))}
-                        className="w-20 bg-zinc-900 border border-zinc-850 rounded-lg p-2 text-white text-xs font-mono"
-                        aria-label="Shares to buy"
-                      />
+
+                    {/* Configure Sale toggle & inline form */}
+                    {showSaleConfig[item.tokenId] ? (
+                      <div className="bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 space-y-2">
+                        <p className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold flex items-center gap-1">
+                          <Tag className="w-3 h-3 text-kente-gold" /> Configure Sale (curator only)
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-0.5">
+                            <label className="text-[10px] text-zinc-500">Shares to sell</label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={saleShares[item.tokenId] ?? ''}
+                              onChange={(e) => setSaleShares((s) => ({ ...s, [item.tokenId]: e.target.value }))}
+                              placeholder={`e.g. ${item.totalShares || 10000}`}
+                              className="w-full bg-zinc-900 border border-zinc-850 rounded-lg p-2 text-white text-xs font-mono"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <label className="text-[10px] text-zinc-500">Price / share (USDC)</label>
+                            <input
+                              type="number"
+                              min={0.000001}
+                              step={0.0001}
+                              value={salePrice[item.tokenId] ?? ''}
+                              onChange={(e) => setSalePrice((s) => ({ ...s, [item.tokenId]: e.target.value }))}
+                              placeholder="e.g. 0.01"
+                              className="w-full bg-zinc-900 border border-zinc-850 rounded-lg p-2 text-white text-xs font-mono"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleConfigureSale(item)}
+                            disabled={loading && actionId === `config-${item.tokenId}`}
+                            className="flex-1 bg-kente-gold hover:bg-kente-gold-light text-zinc-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1 transition-all"
+                          >
+                            {loading && actionId === `config-${item.tokenId}` ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Tag className="w-3.5 h-3.5" />
+                            )}
+                            List Shares
+                          </button>
+                          <button
+                            onClick={() => setShowSaleConfig((s) => ({ ...s, [item.tokenId]: false }))}
+                            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 font-semibold py-2 px-3 rounded-lg text-xs transition-all"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
                       <button
-                        onClick={() => handleBuyShares(item)}
-                        disabled={loading && actionId === `share-${item.tokenId}`}
-                        className="flex-1 bg-kente-gold hover:bg-kente-gold-light text-zinc-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1 transition-all"
+                        onClick={() => setShowSaleConfig((s) => ({ ...s, [item.tokenId]: true }))}
+                        className="w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-all"
                       >
-                        {loading && actionId === `share-${item.tokenId}` ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Layers className="w-3.5 h-3.5" />
-                        )}
-                        Buy Shares
+                        <Settings className="w-3.5 h-3.5 text-kente-gold" />
+                        {item.sharePriceRaw > 0n ? 'Reconfigure Sale' : 'Configure Sale'}
                       </button>
-                    </div>
+                    )}
+
+                    {/* Buy shares — only show when a sale is active */}
+                    {item.sharePriceRaw > 0n && (item.availableShares ?? 0) > 0 && (
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          value={shareQty[item.tokenId] ?? '100'}
+                          onChange={(e) => setShareQty((q) => ({ ...q, [item.tokenId]: e.target.value }))}
+                          className="w-20 bg-zinc-900 border border-zinc-850 rounded-lg p-2 text-white text-xs font-mono"
+                          aria-label="Shares to buy"
+                        />
+                        <button
+                          onClick={() => handleBuyShares(item)}
+                          disabled={loading && actionId === `share-${item.tokenId}`}
+                          className="flex-1 bg-kente-gold hover:bg-kente-gold-light text-zinc-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1 transition-all"
+                        >
+                          {loading && actionId === `share-${item.tokenId}` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Layers className="w-3.5 h-3.5" />
+                          )}
+                          Buy Shares
+                        </button>
+                      </div>
+                    )}
+
                     <button
                       onClick={() => handleClaimRevenue(item)}
                       disabled={loading && actionId === `claim-${item.tokenId}`}

@@ -278,13 +278,14 @@ export class BlockchainService implements OnModuleInit {
 
   async getSaleInfo(
     vaultAddress: string,
-  ): Promise<{ pricePerShare: bigint; sharesForSale: bigint }> {
+  ): Promise<{ pricePerShare: bigint; sharesForSale: bigint; totalShares: bigint }> {
     const vault = new ethers.Contract(vaultAddress, FRACTIONAL_VAULT_ABI, this.provider);
-    const [pricePerShare, sharesForSale] = await Promise.all([
+    const [pricePerShare, sharesForSale, totalShares] = await Promise.all([
       vault.saleSharePrice(),
       vault.sharesForSale(),
+      vault.totalSupply(),
     ]);
-    return { pricePerShare, sharesForSale };
+    return { pricePerShare, sharesForSale, totalShares };
   }
 
   async getSession(
