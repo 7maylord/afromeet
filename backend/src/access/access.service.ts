@@ -7,6 +7,9 @@ import { MediaVaultService } from '../media-vault/media-vault.service';
 
 @Injectable()
 export class AccessService {
+  /** Resolved work metadata, cached by tokenURI (IPFS CIDs are immutable). */
+  private readonly metaCache = new Map<string, { title: string | null; category: string | null }>();
+
   constructor(
     private readonly blockchain: BlockchainService,
     private readonly wallets: WalletsService,
@@ -14,7 +17,31 @@ export class AccessService {
     private readonly vault: MediaVaultService,
   ) {}
 
-  /** The public catalogue: every active work on-chain with its pricing, tokenURI + vault state. */
+  private ipfsToHttp(uri: string): string {
+    const gw = this.config.get<string>('ipfsGateway')!;
+    return uri?.startsWith('ipfs://') ? gw + uri.slice(7) : uri;
+  }
+
+  /** Fetch a work's public metadata (title + category) server-side, so the client never has to
+   *  reach IPFS itself. Cached on success; failures fall through to null and retry next time. */
+  private async resolveMeta(tokenURI: string): Promise<{ title: string | null; category: string | null }> {
+    const cached = this.metaCache.get(tokenURI);
+    if (cached) return cached;
+    try {
+      const res = await fetch(this.ipfsToHttp(tokenURI), { signal: AbortSignal.timeout(4000) });
+      if (res.ok) {
+        const meta = (await res.json()) as { name?: string; category?: string };
+        const out = { title: meta?.name ?? null, category: meta?.category ?? null };
+        this.metaCache.set(tokenURI, out);
+        return out;
+      }
+    } catch {
+      /* metadata unreachable — leave null, don't cache so it retries */
+    }
+    return { title: null, category: null };
+  }
+
+  /** The public catalogue: every active work on-chain with its pricing, tokenURI, title + vault state. */
   async catalogue() {
     const next = Number(await this.blockchain.getNextTokenId());
     const nftAddr = this.blockchain.nftAddress();
@@ -27,6 +54,7 @@ export class AccessService {
           this.blockchain.getCreator(id),
           this.blockchain.getTokenUri(id),
         ]);
+        const meta = await this.resolveMeta(uri);
 
         let vault: string | null = null;
         let sharePriceRaw = '0';
@@ -46,6 +74,8 @@ export class AccessService {
         works.push({
           id: id.toString(),
           creator,
+          title: meta.title ?? `Work #${id}`,
+          category: meta.category,
           mode: cfg.mode === 0 ? 'TIMED' : 'DISCRETE',
           pricePerAccessUsdc: Number(cfg.pricePerAccess) / 1e6,
           discoveryPriceUsdc: Number(cfg.discoveryPrice) / 1e6,

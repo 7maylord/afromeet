@@ -64,6 +64,6 @@ export default () => ({
 
   mongodbUri: process.env.MONGODB_URI, // optional — persists media keys + agent picks; in-memory if unset
   pinataJwt: process.env.PINATA_JWT, // server-side Pinata JWT for work uploads
-  ipfsGateway: process.env.IPFS_GATEWAY ?? 'https://gateway.pinata.cloud/ipfs/',
+  ipfsGateway: process.env.IPFS_GATEWAY ?? 'https://ipfs.io/ipfs/',
   minAccessSeconds: parseInt(process.env.MIN_ACCESS_SECONDS ?? '30', 10),
 });

@@ -13,8 +13,6 @@ import {
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-const IPFS_GATEWAY =
-  process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
 
 interface EarningsStats {
   totalUSDC: number;
@@ -32,15 +30,14 @@ interface CreatedWork {
 interface RawWork {
   id: string;
   creator: string;
+  title: string;
+  category: string | null;
   mode: "TIMED" | "DISCRETE";
   pricePerAccessUsdc: number;
   ratePerSecondUsdc: number;
   minAccessSeconds: number;
   tokenURI: string;
 }
-
-const ipfsToHttp = (uri: string) =>
-  uri?.startsWith("ipfs://") ? IPFS_GATEWAY + uri.slice(7) : uri;
 
 export default function CreatorDashboard() {
   const { wallets } = useWallets();
@@ -79,32 +76,24 @@ export default function CreatorDashboard() {
     if (!userAddress) return;
     fetch(`${BACKEND_URL}/access/catalogue`)
       .then((r) => r.json())
-      .then(async (cat: RawWork[]) => {
+      .then((cat: RawWork[]) => {
         const mine = Array.isArray(cat)
           ? cat.filter(
               (w) => w.creator?.toLowerCase() === userAddress.toLowerCase(),
             )
           : [];
-        const works = await Promise.all(
-          mine.map(async (w) => {
-            let title = `Work #${w.id}`;
-            let category = w.mode === "TIMED" ? "music" : "writing";
-            try {
-              const meta = await fetch(ipfsToHttp(w.tokenURI)).then((r) =>
-                r.json(),
-              );
-              if (meta?.name) title = meta.name;
-              if (meta?.category) category = meta.category;
-            } catch {
-              /* metadata unreachable — keep defaults */
-            }
-            const terms =
-              w.mode === "TIMED"
-                ? `$${w.ratePerSecondUsdc}/sec · min ${w.minAccessSeconds}s`
-                : `$${w.pricePerAccessUsdc} / unlock`;
-            return { id: w.id, title, category, terms };
-          }),
-        );
+        const works = mine.map((w) => {
+          const terms =
+            w.mode === "TIMED"
+              ? `$${w.ratePerSecondUsdc}/sec · min ${w.minAccessSeconds}s`
+              : `$${w.pricePerAccessUsdc} / unlock`;
+          return {
+            id: w.id,
+            title: w.title || `Work #${w.id}`,
+            category: w.category || (w.mode === "TIMED" ? "music" : "writing"),
+            terms,
+          };
+        });
         setCreatedWorks(works);
       })
       .catch(() => setCreatedWorks([]));

@@ -22,7 +22,6 @@ import {
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
 const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_ESCROW_ADDRESS ?? '';
-const IPFS_GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY ?? 'https://gateway.pinata.cloud/ipfs/';
 
 const hexToBytes = (h: string) => new Uint8Array((h.match(/.{1,2}/g) ?? []).map((b) => parseInt(b, 16)));
 
@@ -349,32 +348,21 @@ export default function MediaPlayer() {
       try {
         const cat = await fetch(`${BACKEND_URL}/access/catalogue`).then((r) => r.json());
         if (cancelled || !Array.isArray(cat) || cat.length === 0) return;
-        const mapped: WorkItem[] = await Promise.all(
-          cat.map(async (w: Record<string, unknown>) => {
-            let meta: Record<string, unknown> | null = null;
-            try {
-              const uri = String(w.tokenURI ?? '');
-              const url = uri.startsWith('ipfs://') ? IPFS_GATEWAY + uri.slice(7) : uri;
-              if (url) meta = await fetch(url).then((r) => r.json()).catch(() => null);
-            } catch {
-              /* unresolved metadata — fall back below */
-            }
-            const mode = w.mode as 'TIMED' | 'DISCRETE';
-            return {
-              id: String(w.id),
-              title: (meta?.title as string) ?? (meta?.name as string) ?? `Work #${w.id}`,
-              creator: String(w.creator),
-              category: (meta?.category as string) ?? (mode === 'TIMED' ? 'music' : 'art'),
-              price: Number(w.pricePerAccessUsdc),
-              discoveryPrice: Number(w.discoveryPriceUsdc),
-              ratePerSecondUsdc: Number(w.ratePerSecondUsdc),
-              mode,
-              minAccessSeconds: Number(w.minAccessSeconds),
-              url: (meta?.url as string) ?? (meta?.animation_url as string) ?? (meta?.image as string),
-              content: meta?.content as string,
-            } as WorkItem;
-          }),
-        );
+        // Title + category come resolved from the backend catalogue (no client-side IPFS).
+        const mapped: WorkItem[] = cat.map((w: Record<string, unknown>) => {
+          const mode = w.mode as 'TIMED' | 'DISCRETE';
+          return {
+            id: String(w.id),
+            title: (w.title as string) || `Work #${w.id}`,
+            creator: String(w.creator),
+            category: (w.category as string) || (mode === 'TIMED' ? 'music' : 'art'),
+            price: Number(w.pricePerAccessUsdc),
+            discoveryPrice: Number(w.discoveryPriceUsdc),
+            ratePerSecondUsdc: Number(w.ratePerSecondUsdc),
+            mode,
+            minAccessSeconds: Number(w.minAccessSeconds),
+          } as WorkItem;
+        });
         if (!cancelled) {
           setWorks(mapped);
           setSelectedWork(mapped[0]);

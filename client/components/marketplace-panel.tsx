@@ -17,7 +17,6 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:300
 const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FRACTIONAL_VAULT_FACTORY_ADDRESS ?? '';
 const NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
-const IPFS_GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY ?? 'https://gateway.pinata.cloud/ipfs/';
 
 const VAULT_ABI = [
   'function buyShares(uint256 shareAmount)',
@@ -29,12 +28,10 @@ const FACTORY_WRITE_ABI = [
   'function fractionalise(address nft, uint256 tokenId, address revenueToken, uint256 totalShares, string name, string symbol) returns (address)',
 ];
 
-const ipfsToHttp = (uri: string) =>
-  uri?.startsWith('ipfs://') ? IPFS_GATEWAY + uri.slice(7) : uri;
-
 interface RawWork {
   id: string;
   creator: string;
+  title: string;
   tokenURI: string;
   vault: string | null;
   sharePriceRaw: string;
@@ -78,31 +75,20 @@ export default function MarketplacePanel() {
     try {
       const cat: RawWork[] = await fetch(`${BACKEND_URL}/access/catalogue`).then((r) => r.json());
 
-      const mapped = await Promise.all(
-        (Array.isArray(cat) ? cat : []).map(async (w) => {
-          let title = `Work #${w.id}`;
-          try {
-            const meta = await fetch(ipfsToHttp(w.tokenURI)).then((r) => r.json());
-            if (meta?.name) title = meta.name;
-          } catch {
-            /* metadata unreachable */
-          }
-
-          const item: MarketplaceItem = {
-            tokenId: w.id,
-            title,
-            creator: w.creator,
-            isFractionalized: Boolean(w.vault),
-          };
-
-          if (w.vault) {
-            item.vaultAddress = w.vault;
-            item.sharePriceRaw = BigInt(w.sharePriceRaw || '0');
-            item.availableShares = w.sharesForSale;
-          }
-          return item;
-        }),
-      );
+      const mapped = (Array.isArray(cat) ? cat : []).map((w) => {
+        const item: MarketplaceItem = {
+          tokenId: w.id,
+          title: w.title || `Work #${w.id}`,
+          creator: w.creator,
+          isFractionalized: Boolean(w.vault),
+        };
+        if (w.vault) {
+          item.vaultAddress = w.vault;
+          item.sharePriceRaw = BigInt(w.sharePriceRaw || '0');
+          item.availableShares = w.sharesForSale;
+        }
+        return item;
+      });
       setItems(mapped);
     } catch {
       setItems([]);
