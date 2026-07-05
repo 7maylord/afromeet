@@ -15,8 +15,6 @@ import {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 const AFROMEET_NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
-const SPLIT_RESOLVER_ADDRESS = process.env.NEXT_PUBLIC_SPLIT_RESOLVER_ADDRESS ?? '';
-const ACCESS_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_REGISTRY_ADDRESS ?? '';
 
 interface SplitRecipient {
   address: string;
@@ -120,13 +118,26 @@ export default function MintForm() {
       const signer = await provider.getSigner();
       const creatorAddr = await signer.getAddress();
 
-      // 2. Mint the work NFT and read the tokenId from the Transfer event.
+      // 2. Mint + configure access + set royalty splits in a single transaction (one signature).
+      const toRaw = (v: string) => ethers.parseUnits(v || '0', 6);
+      const isTimed = mode === 'TIMED';
       const nft = new ethers.Contract(
         AFROMEET_NFT_ADDRESS,
-        ['function mintWork(string uri) returns (uint256)'],
+        [
+          'function mintWorkWithSetup(string uri, uint256 pricePerAccess, uint256 discoveryPrice, uint256 ratePerSecond, uint8 mode, uint256 minAccessSeconds, address[] recipients, uint256[] bps) returns (uint256)',
+        ],
         signer,
       );
-      const mintTx = await nft.mintWork(up.metadataUri);
+      const mintTx = await nft.mintWorkWithSetup(
+        up.metadataUri,
+        isTimed ? 0 : toRaw(price), // pricePerAccess (DISCRETE flat)
+        toRaw(discoveryPrice), // discoveryPrice
+        isTimed ? toRaw(price) : 0, // ratePerSecond (TIMED)
+        isTimed ? 0 : 1, // mode enum (TIMED=0, DISCRETE=1)
+        minAccessSeconds,
+        splits.map((s) => s.address || creatorAddr), // recipients (blank rows → creator)
+        splits.map((s) => s.bps),
+      );
       toast.loading(`Mint tx ${mintTx.hash.slice(0, 10)}… confirming.`, { id: tId });
       const receipt = await mintTx.wait();
 
@@ -154,41 +165,6 @@ export default function MintForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uploadId: up.uploadId }),
       }).catch(() => undefined);
-
-      // 3. Configure access — per-second rate for TIMED, flat unlock price for DISCRETE.
-      toast.loading(`Configuring access for work #${tokenId}…`, { id: tId });
-      const toRaw = (v: string) => ethers.parseUnits(v || '0', 6);
-      const isTimed = mode === 'TIMED';
-      const registry = new ethers.Contract(
-        ACCESS_REGISTRY_ADDRESS,
-        ['function setConfig(uint256 tokenId, uint256 pricePerAccess, uint256 discoveryPrice, uint256 ratePerSecond, uint8 mode, uint256 minAccessSeconds)'],
-        signer,
-      );
-      await (
-        await registry.setConfig(
-          tokenId,
-          isTimed ? 0 : toRaw(price), // pricePerAccess (DISCRETE flat)
-          toRaw(discoveryPrice), // discoveryPrice
-          isTimed ? toRaw(price) : 0, // ratePerSecond (TIMED)
-          isTimed ? 0 : 1, // mode enum
-          minAccessSeconds,
-        )
-      ).wait();
-
-      // 4. Set royalty splits (must sum to 10000; falls back to the creator for blank rows).
-      toast.loading(`Setting royalty splits for work #${tokenId}…`, { id: tId });
-      const resolver = new ethers.Contract(
-        SPLIT_RESOLVER_ADDRESS,
-        ['function setSplits(uint256 tokenId, address[] recipients, uint256[] bps)'],
-        signer,
-      );
-      await (
-        await resolver.setSplits(
-          tokenId,
-          splits.map((s) => s.address || creatorAddr),
-          splits.map((s) => s.bps),
-        )
-      ).wait();
 
       toast.success(`Work #${tokenId} is live on AfroMeet — it now appears in the catalogue.`, { id: tId });
       setTitle('');

@@ -32,6 +32,11 @@
         "internalType": "uint256"
       },
       {
+        "name": "ratePerSecond",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
         "name": "mode",
         "type": "uint8",
         "internalType": "enum AccessRegistry.AccessMode"
@@ -77,6 +82,11 @@
           },
           {
             "name": "discoveryPrice",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ratePerSecond",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -134,6 +144,54 @@
       },
       {
         "name": "discoveryPrice",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ratePerSecond",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "mode",
+        "type": "uint8",
+        "internalType": "enum AccessRegistry.AccessMode"
+      },
+      {
+        "name": "minAccessSeconds",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setConfigFrom",
+    "inputs": [
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "creator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "pricePerAccess",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "discoveryPrice",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ratePerSecond",
         "type": "uint256",
         "internalType": "uint256"
       },
