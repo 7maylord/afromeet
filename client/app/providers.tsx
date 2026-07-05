@@ -1,6 +1,7 @@
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
+import { Toaster } from "sonner";
 import type { ReactNode } from "react";
 
 // Custom Arc Testnet chain configuration for Privy
@@ -50,6 +51,19 @@ export function Providers({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      <Toaster
+        theme="dark"
+        position="top-right"
+        richColors
+        closeButton
+        toastOptions={{
+          style: {
+            background: "rgba(18, 18, 20, 0.9)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            color: "#F0EEE8",
+          },
+        }}
+      />
     </PrivyProvider>
   );
 }

@@ -3,12 +3,12 @@
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
+import { toast } from 'sonner';
 import {
   ShoppingBag,
   Layers,
   Coins,
   Plus,
-  CheckCircle,
   Loader2,
   Lock,
 } from 'lucide-react';
@@ -59,8 +59,15 @@ export default function MarketplacePanel() {
   const [items, setItems] = useState<MarketplaceItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [actionId, setActionId] = useState<string | null>(null);
-  const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
   const [shareQty, setShareQty] = useState<Record<string, string>>({});
+
+  // Route the existing {type, text} feedback through sonner toasts.
+  const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string } | null) => {
+    if (!m) return;
+    if (m.type === 'success') toast.success(m.text);
+    else if (m.type === 'error') toast.error(m.text);
+    else toast.loading(m.text, { duration: 2500 });
+  };
 
   const [fractionalizeTokenId, setFractionalizeTokenId] = useState<string>('');
   const [totalShares, setTotalShares] = useState<string>('10000');
@@ -299,23 +306,6 @@ export default function MarketplacePanel() {
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Global feedback */}
-      {statusMsg && (
-        <div className={`p-4 rounded-xl border flex items-start gap-3 text-xs max-w-xl mx-auto ${
-          statusMsg.type === 'success'
-            ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-300'
-            : statusMsg.type === 'error'
-            ? 'bg-red-950/60 border-red-800/60 text-red-300'
-            : 'bg-zinc-900/80 border-zinc-800/80 text-zinc-300'
-        }`}>
-          <span className="mt-0.5">
-            {statusMsg.type === 'success' && <CheckCircle className="w-4 h-4 text-emerald-400" />}
-            {statusMsg.type === 'info' && <Loader2 className="w-4 h-4 text-kente-gold animate-spin" />}
-          </span>
-          <p className="leading-relaxed">{statusMsg.text}</p>
         </div>
       )}
 

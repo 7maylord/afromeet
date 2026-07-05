@@ -3,13 +3,12 @@
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useState, useRef, useEffect } from 'react';
 import { ethers } from 'ethers';
-import { 
-  Upload, 
-  Plus, 
-  Trash2, 
-  CheckCircle, 
-  AlertCircle, 
-  Loader2, 
+import { toast } from 'sonner';
+import {
+  Upload,
+  Plus,
+  Trash2,
+  CheckCircle,
   HelpCircle,
   Percent
 } from 'lucide-react';
@@ -43,9 +42,7 @@ export default function MintForm() {
 
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'uploading' | 'minting' | 'success' | 'error'>('idle');
-  const [msg, setMsg] = useState<string>('');
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Default the first royalty split to the connected wallet (100%), so a solo creator types
@@ -53,6 +50,8 @@ export default function MintForm() {
   const connectedAddress = wallets[0]?.address;
   useEffect(() => {
     if (!connectedAddress) return;
+    // Prefill the first royalty row with the connected wallet once it's known.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSplits((prev) =>
       prev.length > 0 && prev[0].address === ''
         ? [{ ...prev[0], address: connectedAddress }, ...prev.slice(1)]
@@ -99,14 +98,12 @@ export default function MintForm() {
     if (!isFormValid()) return;
 
     if (!authenticated || wallets.length === 0) {
-      setStatus('error');
-      setMsg('Please connect your wallet first.');
+      toast.error('Please connect your wallet first.');
       return;
     }
 
     setLoading(true);
-    setStatus('uploading');
-    setMsg('Pinning asset + metadata to IPFS...');
+    const tId = toast.loading('Pinning asset + metadata to IPFS…');
 
     try {
       // 1. Upload media + metadata via the backend (Pinata proxy) → tokenURI.
@@ -118,8 +115,7 @@ export default function MintForm() {
       const up = await fetch(`${BACKEND_URL}/works/upload`, { method: 'POST', body: form }).then((r) => r.json());
       if (!up?.metadataUri) throw new Error(up?.message || 'IPFS upload failed');
 
-      setStatus('minting');
-      setMsg('Minting work NFT on Arc...');
+      toast.loading('Minting work NFT on Arc…', { id: tId });
 
       const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
       const signer = await provider.getSigner();
@@ -132,7 +128,7 @@ export default function MintForm() {
         signer,
       );
       const mintTx = await nft.mintWork(up.metadataUri);
-      setMsg(`Mint tx ${mintTx.hash.slice(0, 10)}… confirming.`);
+      toast.loading(`Mint tx ${mintTx.hash.slice(0, 10)}… confirming.`, { id: tId });
       const receipt = await mintTx.wait();
 
       const iface = new ethers.Interface([
@@ -161,7 +157,7 @@ export default function MintForm() {
       }).catch(() => undefined);
 
       // 3. Configure access — per-second rate for TIMED, flat unlock price for DISCRETE.
-      setMsg(`Configuring access for work #${tokenId}…`);
+      toast.loading(`Configuring access for work #${tokenId}…`, { id: tId });
       const toRaw = (v: string) => ethers.parseUnits(v || '0', 6);
       const isTimed = mode === 'TIMED';
       const registry = new ethers.Contract(
@@ -181,7 +177,7 @@ export default function MintForm() {
       ).wait();
 
       // 4. Set royalty splits (must sum to 10000; falls back to the creator for blank rows).
-      setMsg(`Setting royalty splits for work #${tokenId}…`);
+      toast.loading(`Setting royalty splits for work #${tokenId}…`, { id: tId });
       const resolver = new ethers.Contract(
         SPLIT_RESOLVER_ADDRESS,
         ['function setSplits(uint256 tokenId, address[] recipients, uint256[] bps)'],
@@ -195,15 +191,13 @@ export default function MintForm() {
         )
       ).wait();
 
-      setStatus('success');
-      setMsg(`Work #${tokenId} is live on AfroMeet — it now appears in the catalogue.`);
+      toast.success(`Work #${tokenId} is live on AfroMeet — it now appears in the catalogue.`, { id: tId });
       setTitle('');
       setDescription('');
       setFile(null);
     } catch (err) {
       console.error(err);
-      setStatus('error');
-      setMsg(`Mint failed: ${(err as Error).message || err}`);
+      toast.error(`Mint failed: ${(err as Error).message || err}`, { id: tId });
     } finally {
       setLoading(false);
     }
@@ -416,24 +410,6 @@ export default function MintForm() {
             </span>
           </div>
         </div>
-
-        {/* Feedback Messages */}
-        {status !== 'idle' && (
-          <div className={`p-4 rounded-xl border flex items-start gap-3 text-xs ${
-            status === 'success' 
-              ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-300'
-              : status === 'error'
-              ? 'bg-red-950/60 border-red-800/60 text-red-300'
-              : 'bg-zinc-900/80 border-zinc-800/80 text-zinc-300'
-          }`}>
-            <span className="mt-0.5">
-              {status === 'success' && <CheckCircle className="w-4.5 h-4.5 text-emerald-400" />}
-              {status === 'error' && <AlertCircle className="w-4.5 h-4.5 text-red-400" />}
-              {(status === 'uploading' || status === 'minting') && <Loader2 className="w-4.5 h-4.5 text-kente-gold animate-spin" />}
-            </span>
-            <p className="leading-relaxed">{msg}</p>
-          </div>
-        )}
 
         {/* Submit Button */}
         <button
