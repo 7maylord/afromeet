@@ -11,12 +11,15 @@ import {
   X,
   Loader2,
   TrendingUp,
-  Award
+  Award,
+  Coins,
+  Users
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
-const DEFAULT_CREATOR = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
 const EXPLORER_URL = process.env.NEXT_PUBLIC_ARC_EXPLORER ?? 'https://testnet.arcscan.app';
+const NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
+const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
 
 interface Proposal {
   id: string;
@@ -31,12 +34,21 @@ interface Proposal {
 export default function DaoPanel() {
   const { user, authenticated } = usePrivy();
   const { wallets } = useWallets();
-  // View the connected creator's own DAO (their ecosystem). DEFAULT_CREATOR is a fallback only.
-  const creator = user?.wallet?.address || DEFAULT_CREATOR;
+  // Which creator's DAO is being viewed — any creator with a work, so fans can browse and
+  // participate in other creators' ecosystems, not just their own.
+  const [selectedCreator, setSelectedCreator] = useState<string>('');
+  const [creators, setCreators] = useState<{ address: string; works: number }[]>([]);
+  const creator = selectedCreator;
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [treasuryBalance, setTreasuryBalance] = useState<string>('0.00');
   const [vibeBalance, setVibeBalance] = useState<number>(0);
   const [hasDao, setHasDao] = useState<boolean>(true);
+  const [tokenAddress, setTokenAddress] = useState<string | null>(null);
+
+  // Buy-VIBE modal
+  const [showBuyModal, setShowBuyModal] = useState(false);
+  const [buyUsdc, setBuyUsdc] = useState('5');
+  const [buying, setBuying] = useState(false);
 
   // Proposal Creation
   const [newTitle, setNewTitle] = useState('');
@@ -68,7 +80,30 @@ export default function DaoPanel() {
     else toast.info(content);
   };
 
+  // Build the list of creator DAOs from the catalogue (every creator with a work has an ecosystem).
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/access/catalogue`)
+      .then((r) => r.json())
+      .then((cat: { creator?: string }[]) => {
+        if (!Array.isArray(cat)) return;
+        const counts = new Map<string, number>();
+        for (const w of cat) {
+          if (w.creator) counts.set(w.creator, (counts.get(w.creator) ?? 0) + 1);
+        }
+        const list = [...counts.entries()].map(([address, works]) => ({ address, works }));
+        setCreators(list);
+        setSelectedCreator((cur) => {
+          if (cur) return cur;
+          const me = user?.wallet?.address;
+          if (me && list.some((c) => c.address.toLowerCase() === me.toLowerCase())) return me;
+          return list[0]?.address ?? me ?? '';
+        });
+      })
+      .catch(() => {});
+  }, [user?.wallet?.address]);
+
   const fetchDaoData = async () => {
+    if (!creator) return;
     try {
       const [treasuryRes, proposalsRes] = await Promise.all([
         fetch(`${BACKEND_URL}/dao/${creator}/treasury`).then(r => r.json()),
@@ -76,6 +111,7 @@ export default function DaoPanel() {
       ]);
 
       setHasDao(Boolean(treasuryRes.dao));
+      setTokenAddress(treasuryRes.token ?? null);
       setTreasuryBalance((Number(treasuryRes.balance ?? 0) / 1e6).toFixed(2));
       setProposals(Array.isArray(proposalsRes) ? proposalsRes : []);
 
@@ -143,6 +179,55 @@ export default function DaoPanel() {
     }
   };
 
+  // Buy VIBE (governance power) for the DAO in view: pay USDC → treasury, receive VIBE 1:1, then
+  // delegate so it counts as votes immediately.
+  const handleBuyVibe = async () => {
+    if (!authenticated || !wallets[0]) {
+      setStatusMsg({ type: 'error', text: 'Please connect your wallet first.' });
+      return;
+    }
+    const amount = Number(buyUsdc);
+    if (!amount || amount <= 0) {
+      setStatusMsg({ type: 'error', text: 'Enter a USDC amount.' });
+      return;
+    }
+    setBuying(true);
+    try {
+      const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
+      const signer = await provider.getSigner();
+      const raw = ethers.parseUnits(buyUsdc, 6);
+
+      setStatusMsg({ type: 'info', text: `Approving ${amount} USDC…` });
+      const usdc = new ethers.Contract(USDC_ADDRESS, ['function approve(address,uint256) returns (bool)'], signer);
+      await (await usdc.approve(NFT_ADDRESS, raw)).wait();
+
+      setStatusMsg({ type: 'info', text: `Buying ${amount} VIBE…` });
+      const nft = new ethers.Contract(
+        NFT_ADDRESS,
+        ['function buyVibe(address creator, uint256 usdcAmount) returns (uint256)'],
+        signer,
+      );
+      const tx = await nft.buyVibe(creator, raw);
+      setStatusMsg({ type: 'info', text: 'Purchase broadcasted. Confirming…', txHash: tx.hash });
+      await tx.wait();
+
+      // Delegate the new VIBE to the buyer so it registers as voting power.
+      if (tokenAddress) {
+        setStatusMsg({ type: 'info', text: 'Activating voting power…' });
+        const token = new ethers.Contract(tokenAddress, ['function delegate(address)'], signer);
+        await (await token.delegate(await signer.getAddress())).wait();
+      }
+
+      setStatusMsg({ type: 'success', text: `Bought ${amount} VIBE — voting power active, proceeds sent to the treasury.`, txHash: tx.hash });
+      setShowBuyModal(false);
+      fetchDaoData();
+    } catch (err) {
+      setStatusMsg({ type: 'error', text: `Buy failed: ${(err as Error).message || err}` });
+    } finally {
+      setBuying(false);
+    }
+  };
+
   const handleCreateProposal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle || !newDesc) return;
@@ -182,6 +267,39 @@ export default function DaoPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Creator DAO selector — browse and participate in any creator's ecosystem */}
+      {creators.length > 0 && (
+        <div className="glass rounded-xl border border-zinc-800/80 p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <Users className="h-3.5 w-3.5 text-zinc-500" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+              Creator DAOs
+            </span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {creators.map((c) => {
+              const active = c.address.toLowerCase() === selectedCreator.toLowerCase();
+              const isMe = user?.wallet?.address?.toLowerCase() === c.address.toLowerCase();
+              return (
+                <button
+                  key={c.address}
+                  onClick={() => setSelectedCreator(c.address)}
+                  className={`shrink-0 rounded-lg border px-3 py-1.5 font-mono text-xs transition-all ${
+                    active
+                      ? 'border-purple-500/60 bg-purple-950/40 text-purple-200'
+                      : 'border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {c.address.slice(0, 6)}…{c.address.slice(-4)}
+                  {isMe && <span className="ml-1.5 text-[9px] uppercase text-emerald-400">You</span>}
+                  <span className="ml-1.5 text-[9px] text-zinc-600">{c.works}w</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Top Cards for Stats */}
       <div className="grid sm:grid-cols-3 gap-6">
         <div className="glass rounded-xl p-5 border border-zinc-800/80 flex items-center justify-between">
@@ -204,6 +322,12 @@ export default function DaoPanel() {
             <p className="font-mono text-2xl font-bold text-white mt-1">
               {vibeBalance} <span className="text-xs text-zinc-500 font-sans">VIBE</span>
             </p>
+            <button
+              onClick={() => setShowBuyModal(true)}
+              className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-purple-300 hover:text-purple-200"
+            >
+              <Coins className="w-3 h-3" /> Buy VIBE
+            </button>
           </div>
           <Award className="w-8 h-8 text-purple-400 opacity-80" />
         </div>
@@ -370,6 +494,60 @@ export default function DaoPanel() {
         </div>
       </div>
 
+      {/* Buy VIBE modal */}
+      {showBuyModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => !buying && setShowBuyModal(false)}
+        >
+          <div
+            className="glass-premium w-full max-w-md rounded-2xl border border-white/10 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between">
+              <h4 className="font-display text-lg font-bold text-white">Buy VIBE</h4>
+              <button
+                onClick={() => !buying && setShowBuyModal(false)}
+                className="text-white/40 hover:text-white"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="mb-4 text-xs leading-relaxed text-zinc-400">
+              VIBE is this creator&apos;s governance token. Buy it to get voting power in their DAO —{' '}
+              <strong className="text-white">1 VIBE = 1 USDC</strong>, and every purchase flows
+              straight to the DAO treasury. Your VIBE is auto-delegated so it counts right away.
+            </p>
+
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500">Amount (USDC)</label>
+            <input
+              type="number"
+              min="1"
+              value={buyUsdc}
+              onChange={(e) => setBuyUsdc(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-900 p-2.5 font-mono text-white"
+            />
+            <div className="mt-2 flex items-center justify-between text-xs text-zinc-400">
+              <span>You receive</span>
+              <span className="font-mono font-bold text-purple-300">{Number(buyUsdc) || 0} VIBE</span>
+            </div>
+
+            <button
+              onClick={handleBuyVibe}
+              disabled={buying}
+              className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg bg-purple-700 py-2.5 font-bold text-white transition-all hover:bg-purple-600 disabled:opacity-50"
+            >
+              {buying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Coins className="h-4 w-4" />}
+              Buy {Number(buyUsdc) || 0} VIBE
+            </button>
+            <p className="mt-2 text-center text-[10px] text-zinc-600">
+              Proceeds fund the treasury · {creator?.slice(0, 6)}…{creator?.slice(-4)}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CreatorVibeToken} from "./CreatorVibeToken.sol";
 import {DAOTreasury} from "./DAOTreasury.sol";
 import {CreatorDAOFactory} from "./CreatorDAOFactory.sol";
@@ -18,6 +19,8 @@ import {IAccessRegistrySetup, ISplitResolverSetup} from "./interfaces/IAccessSet
 ///         off-chain config. Secondary-sale royalties and the 2% cultural cut are handled by the
 ///         marketplace, not here.
 contract AfroMeetNFT is ERC721URIStorage, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     struct Ecosystem {
         address token;
         address dao;
@@ -27,6 +30,9 @@ contract AfroMeetNFT is ERC721URIStorage, ReentrancyGuard {
 
     /// @notice CreatorVibeTokens minted to the creator on each work mint.
     uint256 public constant CREATOR_MINT_REWARD = 100e18;
+    /// @notice VIBE minted per 1 USDC when a fan buys governance power (1 VIBE = 1 USDC).
+    ///         USDC is 6dp and VIBE is 18dp, so each USDC unit mints 1e12 VIBE units.
+    uint256 public constant VIBE_PER_USDC = 1e12;
 
     IERC20 public immutable usdc;
     /// @notice External factory that deploys the per-creator Governor (kept out of this contract
@@ -46,6 +52,7 @@ contract AfroMeetNFT is ERC721URIStorage, ReentrancyGuard {
     event EcosystemCreated(address indexed creator, address token, address dao, address treasury);
     event WorkMinted(uint256 indexed tokenId, address indexed creator, string uri);
     event AccessLayerSet(address registry, address resolver);
+    event VibePurchased(address indexed creator, address indexed buyer, uint256 usdcPaid, uint256 vibeMinted);
 
     constructor(IERC20 usdc_, CreatorDAOFactory daoFactory_) ERC721("AfroMeet Work", "AFRO") {
         require(address(usdc_) != address(0), "usdc=0");
@@ -90,6 +97,22 @@ contract AfroMeetNFT is ERC721URIStorage, ReentrancyGuard {
             tokenId, msg.sender, pricePerAccess, discoveryPrice, ratePerSecond, mode, minAccessSeconds
         );
         splitResolver.setSplitsFrom(tokenId, recipients, bps);
+    }
+
+    /// @notice Buy voting power in a creator's DAO. The buyer pays `usdcAmount` USDC (which goes to
+    ///         that creator's treasury) and receives VIBE at 1 VIBE = 1 USDC. Anyone can buy — this
+    ///         is how fans get governance weight in a creator's ecosystem. The buyer still needs to
+    ///         `delegate` their VIBE for it to count as votes.
+    function buyVibe(address creator, uint256 usdcAmount) external nonReentrant returns (uint256 vibeMinted) {
+        Ecosystem memory eco = ecosystems[creator];
+        require(eco.exists, "no ecosystem");
+        require(usdcAmount > 0, "amount=0");
+
+        usdc.safeTransferFrom(msg.sender, eco.treasury, usdcAmount); // proceeds fund the treasury
+        vibeMinted = usdcAmount * VIBE_PER_USDC;
+        CreatorVibeToken(eco.token).distributeTokens(msg.sender, vibeMinted, "VIBE_PURCHASE");
+
+        emit VibePurchased(creator, msg.sender, usdcAmount, vibeMinted);
     }
 
     function _mintWork(string calldata uri) internal returns (uint256 tokenId) {

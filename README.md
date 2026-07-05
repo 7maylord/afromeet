@@ -46,15 +46,17 @@ See [contracts/README.md](contracts/README.md) and [backend/README.md](backend/R
 
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
-| AfroMeetNFT             | `0xD54bA0723b719D081a83213316d0bd08d2dD4D4E` |
-| AccessRegistry          | `0x7D8B2cff30346EF8d28B82DDCFf822C7b62e086a` |
-| AccessEscrow            | `0xdC8cbA2f35FE6a5F889009633d05168C33b3dCAF` |
-| SplitResolver           | `0x8f06829490Aa81455aD9f70d272D3A9A252c962E` |
-| AfroMeetRoyalty         | `0x59b65b8348D700c530f2E4b4bAeba7Fe801950c7` |
-| AfroMeetMarketplace     | `0xAC8ED39393ec6c97dE6205eD822DCAb51b00fa9F` |
-| FractionalVaultFactory  | `0xcF5394f314CCa7889201B7dBb8d78800F1F4c479` |
-| CreatorDAOFactory       | `0x45a44f5EEc88bA0d93Ad8f31bDb70c4F449157b3` |
+| AfroMeetNFT             | `0x770eb5208ea21995e5afad1ad50f23300a66e73a` |
+| AccessRegistry          | `0x4f2b0BcE212690b4d0ea92ed528CEBF00F62A8Cd` |
+| AccessEscrow            | `0x668C60E379209a79803bBe033ea8D0Ae593087b0` |
+| SplitResolver           | `0x24da8b01d81b925eb15aa13a539958cc5d602c70` |
+| AfroMeetRoyalty         | `0xb6057af5923697ba3cfb558e2d6fcc2628cccd9c` |
+| AfroMeetMarketplace     | `0xEa54d613646D5032bd0C9EA19e35c0DB23fca27a` |
+| FractionalVaultFactory  | `0x5412F0D7Fea412E0c586EcebAdF4833C0aab5E76` |
+| CreatorDAOFactory       | `0x7a436f6d23170509672652986cfd683e92ddcfd1` |
 | USDC (Arc system token) | `0x3600000000000000000000000000000000000000` |
+
+All eight are verified on [ArcScan](https://testnet.arcscan.app).
 
 **Euterpe (Patron Agent)** — ERC-8004 agent id `839408` · identity registry `0x8004A818BFB912233c491871b3d84c89A494BD9e`
 

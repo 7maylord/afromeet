@@ -36,6 +36,40 @@ contract AfroMeetNFTTest is Test {
         nft.setAccessLayer(IAccessRegistrySetup(address(0)), ISplitResolverSetup(address(0)));
     }
 
+    function test_BuyVibe_MintsToBuyerAndFundsTreasury() public {
+        vm.prank(kofi);
+        nft.mintWork("ipfs://w"); // creates kofi's ecosystem
+        address treasury = nft.treasuryOf(kofi);
+        address token = nft.ecosystemOf(kofi).token;
+
+        usdc.mint(ama, 5_000_000); // fan holds 5 USDC
+        vm.startPrank(ama);
+        usdc.approve(address(nft), 5_000_000);
+        uint256 minted = nft.buyVibe(kofi, 5_000_000);
+        vm.stopPrank();
+
+        assertEq(minted, 5e18, "5 USDC buys 5 VIBE (1:1, 6dp->18dp)");
+        assertEq(CreatorVibeToken(token).balanceOf(ama), 5e18, "VIBE minted to the buyer");
+        assertEq(usdc.balanceOf(treasury), 5_000_000, "USDC proceeds go to the treasury");
+    }
+
+    function test_BuyVibe_RevertWhenNoEcosystem() public {
+        usdc.mint(ama, 1_000_000);
+        vm.startPrank(ama);
+        usdc.approve(address(nft), 1_000_000);
+        vm.expectRevert("no ecosystem"); // kofi never minted
+        nft.buyVibe(kofi, 1_000_000);
+        vm.stopPrank();
+    }
+
+    function test_BuyVibe_RevertOnZeroAmount() public {
+        vm.prank(kofi);
+        nft.mintWork("ipfs://w");
+        vm.prank(ama);
+        vm.expectRevert("amount=0");
+        nft.buyVibe(kofi, 0);
+    }
+
     function test_MintWork_MintsToCreatorAndRecordsCreator() public {
         vm.prank(kofi);
         uint256 id = nft.mintWork("ipfs://work1");
