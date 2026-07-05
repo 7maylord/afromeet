@@ -14,7 +14,7 @@ cp .env.example .env   # fill NEXT_PUBLIC_* addresses + Privy app id (see .env)
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Needs the [backend](../backend/README.md) running (default `http://localhost:3000` via `NEXT_PUBLIC_BACKEND_URL`) for live agent status, catalogue, earnings, and DAO data — panels fall back to seeded data when it's offline.
+Open [http://localhost:3001](http://localhost:3001) — the app runs on port **3001** so it doesn't collide with the [backend](../backend/README.md), which owns **3000** (set via `NEXT_PUBLIC_BACKEND_URL`). The backend must be running for live agent status, catalogue, earnings, and DAO data — panels fall back to seeded data when it's offline.
 
 ## Structure
 

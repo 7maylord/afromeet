@@ -50,7 +50,6 @@ export default function MintForm() {
   const connectedAddress = wallets[0]?.address;
   useEffect(() => {
     if (!connectedAddress) return;
-    // Prefill the first royalty row with the connected wallet once it's known.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSplits((prev) =>
       prev.length > 0 && prev[0].address === ''

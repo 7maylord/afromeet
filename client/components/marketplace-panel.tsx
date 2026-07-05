@@ -32,7 +32,6 @@ const FACTORY_WRITE_ABI = [
 const ipfsToHttp = (uri: string) =>
   uri?.startsWith('ipfs://') ? IPFS_GATEWAY + uri.slice(7) : uri;
 
-// The backend enriches the catalogue with vault state (browsers can't reach the Arc RPC directly).
 interface RawWork {
   id: string;
   creator: string;
@@ -61,12 +60,11 @@ export default function MarketplacePanel() {
   const [actionId, setActionId] = useState<string | null>(null);
   const [shareQty, setShareQty] = useState<Record<string, string>>({});
 
-  // Route the existing {type, text} feedback through sonner toasts.
   const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string } | null) => {
     if (!m) return;
     if (m.type === 'success') toast.success(m.text);
     else if (m.type === 'error') toast.error(m.text);
-    else toast.loading(m.text, { duration: 2500 });
+    else toast.info(m.text);
   };
 
   const [fractionalizeTokenId, setFractionalizeTokenId] = useState<string>('');
@@ -75,7 +73,6 @@ export default function MarketplacePanel() {
   const [vaultSymbol, setVaultSymbol] = useState<string>('');
   const [isFractionalizing, setIsFractionalizing] = useState<boolean>(false);
 
-  // Load the real on-chain catalogue (backend already includes each work's vault state).
   const loadItems = useCallback(async () => {
     setLoading(true);
     try {

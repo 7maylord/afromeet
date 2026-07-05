@@ -28,7 +28,6 @@ export class AccessService {
           this.blockchain.getTokenUri(id),
         ]);
 
-        // Fractionalization state, read server-side (browsers can't reach the Arc RPC directly).
         let vault: string | null = null;
         let sharePriceRaw = '0';
         let sharesForSale = 0;

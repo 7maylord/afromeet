@@ -141,12 +141,11 @@ export default function MediaPlayer() {
   // Discrete unlock state
   const [unlockedContents, setUnlockedContents] = useState<Record<string, { content?: string; url?: string }>>({});
   
-  // Route the existing {type, text} feedback through sonner toasts.
   const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string } | null) => {
     if (!m) return;
     if (m.type === 'success') toast.success(m.text);
     else if (m.type === 'error') toast.error(m.text);
-    else toast.loading(m.text, { duration: 2500 });
+    else toast.info(m.text);
   };
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -325,8 +324,6 @@ export default function MediaPlayer() {
 
       if (selectedWork.mode === 'TIMED' && user?.wallet?.address && wallets[0]) {
         try {
-          // Read via the wallet's provider (not the Arc RPC, which browsers can't reach) —
-          // same transport as the approve tx below.
           const bp = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
           const usdc = new ethers.Contract(
             USDC_ADDRESS,

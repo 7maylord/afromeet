@@ -76,7 +76,6 @@ export default function AgentMonitor() {
     setLogs(prev => [...prev, newLog('Manual run triggered — Euterpe is deciding…', 'warn')]);
 
     try {
-      // POST /agent/run returns the real RunSummary (what she sampled, liked, backed, skipped).
       const s = await fetch(`${BACKEND_URL}/agent/run`, { method: 'POST' }).then(r => r.json());
 
       const lines: LogLine[] = [
@@ -96,7 +95,7 @@ export default function AgentMonitor() {
       lines.push(newLog('Pass complete.', 'success'));
 
       setLogs(prev => [...prev, ...lines]);
-      fetchAgentStats(); // refresh her real on-chain USDC balance after spending
+      fetchAgentStats();
     } catch {
       setLogs(prev => [...prev, newLog('Run failed — backend unreachable.', 'warn')]);
     } finally {

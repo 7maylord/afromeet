@@ -45,12 +45,11 @@ export default function DaoPanel() {
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
 
-  // Route the existing {type, text} feedback through sonner toasts.
   const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string } | null) => {
     if (!m) return;
     if (m.type === 'success') toast.success(m.text);
     else if (m.type === 'error') toast.error(m.text);
-    else toast.loading(m.text, { duration: 2500 });
+    else toast.info(m.text);
   };
 
   const fetchDaoData = async () => {
@@ -64,7 +63,6 @@ export default function DaoPanel() {
       setTreasuryBalance((Number(treasuryRes.balance ?? 0) / 1e6).toFixed(2));
       setProposals(Array.isArray(proposalsRes) ? proposalsRes : []);
 
-      // Real voting power: the voter's balance of this DAO's VIBE governance token.
       const voter = user?.wallet?.address;
       if (treasuryRes.token && voter && wallets[0]) {
         try {

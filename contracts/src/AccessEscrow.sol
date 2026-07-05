@@ -7,6 +7,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {AccessRegistry} from "./AccessRegistry.sol";
 import {SplitResolver} from "./SplitResolver.sol";
+import {IFractionalVaultFactory, IFractionalVault} from "./interfaces/IFractionalVaultFactory.sol";
 
 /// @title AccessEscrow
 /// @notice Settles per-access payments. The operator (backend) opens a session against a listener's
@@ -22,6 +23,10 @@ contract AccessEscrow is Ownable, ReentrancyGuard {
     IERC20 public immutable usdc;
     AccessRegistry public immutable registry;
     SplitResolver public immutable splits;
+    /// @notice Fractional-vault factory, used to route a curator's split into their vault (if any).
+    IFractionalVaultFactory public immutable vaultFactory;
+    /// @notice The work NFT collection whose vaults `vaultFactory` indexes.
+    address public immutable nftAddress;
 
     struct Session {
         address listener;
@@ -34,13 +39,22 @@ contract AccessEscrow is Ownable, ReentrancyGuard {
 
     event SessionOpened(bytes32 indexed sessionId, address indexed listener, uint256 indexed tokenId, uint256 authorised);
     event Settled(bytes32 indexed sessionId, uint256 indexed tokenId, uint256 amount, uint256 daoCut);
+    /// @notice Emitted when a fractionalised work's curator-owned split is paid into its vault.
+    event RevenueRoutedToVault(uint256 indexed tokenId, address indexed vault, uint256 amount);
 
-    constructor(IERC20 usdc_, AccessRegistry registry_, SplitResolver splits_, address operator)
-        Ownable(operator)
-    {
+    constructor(
+        IERC20 usdc_,
+        AccessRegistry registry_,
+        SplitResolver splits_,
+        IFractionalVaultFactory vaultFactory_,
+        address operator
+    ) Ownable(operator) {
+        require(address(vaultFactory_) != address(0), "factory=0");
         usdc = usdc_;
         registry = registry_;
         splits = splits_;
+        vaultFactory = vaultFactory_;
+        nftAddress = address(registry_.nft());
     }
 
     /// @notice Open a metered session. Operator-only. The listener must have approved this escrow
@@ -104,17 +118,35 @@ contract AccessEscrow is Ownable, ReentrancyGuard {
             if (daoCut > 0) usdc.safeTransfer(cfg.daoTreasury, daoCut);
         }
 
+        // If the work is fractionalised, the curator's own split share is routed into the vault so
+        // it distributes pro-rata to shareholders. Gated on the vault's immutable curator matching
+        // the split recipient: a third party who buys and fractionalises the NFT cannot divert a
+        // recipient's revenue (the destination is derived from on-chain authority, not from input —
+        // the same principle as the DAO-treasury resolution).
+        address vault = vaultFactory.vaultOf(nftAddress, s.tokenId);
+        // A redeemed vault is dissolved (zero share supply): routing to it would strand the funds,
+        // so treat it as un-fractionalised and pay the recipients directly again.
+        if (vault != address(0) && IFractionalVault(vault).redeemed()) vault = address(0);
+        address curator = vault == address(0) ? address(0) : IFractionalVault(vault).curator();
+
         // Remainder split per basis points; the last recipient absorbs rounding dust.
         uint256 remainder = amount - daoCut;
         uint256 distributed;
+        uint256 vaultAmount;
         uint256 last = recipients.length - 1;
         for (uint256 i; i <= last; ++i) {
-            uint256 amount =
+            uint256 part =
                 i == last ? remainder - distributed : (remainder * recipients[i].basisPoints) / 10000;
-            distributed += amount;
-            usdc.safeTransfer(recipients[i].recipient, amount);
+            distributed += part;
+            address to = recipients[i].recipient;
+            if (vault != address(0) && to == curator) {
+                to = vault;
+                vaultAmount += part;
+            }
+            usdc.safeTransfer(to, part);
         }
 
+        if (vaultAmount > 0) emit RevenueRoutedToVault(s.tokenId, vault, vaultAmount);
         emit Settled(sessionId, s.tokenId, amount, daoCut);
     }
 }

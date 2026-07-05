@@ -8,8 +8,6 @@ import AfroMark from '@/components/afro-mark';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 
-// Read the balance through the backend — the Arc RPC has no CORS headers, so the browser
-// can't call it directly, and this keeps the RPC key off the client.
 async function readBalance(address: string): Promise<string> {
   const res = await fetch(`${BACKEND_URL}/usdc/${address}/balance`).then((r) => r.json());
   return (Number(res.balanceRaw ?? 0) / 1e6).toFixed(2);

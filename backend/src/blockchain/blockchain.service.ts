@@ -189,7 +189,6 @@ export class BlockchainService implements OnModuleInit {
 
     const iface = new ethers.Interface(ACCESS_ESCROW_ABI);
     const settledTopic = iface.getEvent('Settled')!.topicHash;
-    // Accumulate every Settled event once (stable cursor), then filter to this creator's tokens.
     const logs = await this.syncLogs(`settled:${escrowAddr}`, escrowAddr, [settledTopic]);
     const want = new Set(tokenIds.map((id) => BigInt(id)));
 

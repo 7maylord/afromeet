@@ -12,6 +12,7 @@ import {AfroMeetRoyalty} from "../src/AfroMeetRoyalty.sol";
 import {AfroMeetMarketplace} from "../src/AfroMeetMarketplace.sol";
 import {FractionalVaultFactory} from "../src/FractionalVaultFactory.sol";
 import {IAfroMeetNFT} from "../src/interfaces/IAfroMeetNFT.sol";
+import {IFractionalVaultFactory} from "../src/interfaces/IFractionalVaultFactory.sol";
 
 /// @notice Deploys and wires the full AfroMeet contract suite.
 /// @dev    Env: USDC_ADDRESS (required), OPERATOR_ADDRESS and CULTURAL_POOL_ADDRESS (optional,
@@ -39,11 +40,15 @@ contract DeployAfroMeet is Script {
         SplitResolver splits = new SplitResolver(IAfroMeetNFT(address(nft)));
         AccessRegistry registry = new AccessRegistry(IAfroMeetNFT(address(nft)));
         AfroMeetRoyalty royalty = new AfroMeetRoyalty(IAfroMeetNFT(address(nft)));
-        AccessEscrow escrow = new AccessEscrow(IERC20(usdc), registry, splits, operator);
+        // Vault factory is deployed before the escrow so the escrow can route curators' splits to
+        // their vaults at settlement (the factory has no dependency back on the escrow).
+        FractionalVaultFactory vaultFactory = new FractionalVaultFactory();
+        AccessEscrow escrow = new AccessEscrow(
+            IERC20(usdc), registry, splits, IFractionalVaultFactory(address(vaultFactory)), operator
+        );
         splits.setEscrow(address(escrow));
         AfroMeetMarketplace marketplace =
             new AfroMeetMarketplace(nft, IERC20(usdc), royalty, culturalPool);
-        FractionalVaultFactory vaultFactory = new FractionalVaultFactory();
 
         vm.stopBroadcast();
 

@@ -7,7 +7,9 @@ import {AfroMeetNFT} from "../src/AfroMeetNFT.sol";
 import {AccessRegistry} from "../src/AccessRegistry.sol";
 import {SplitResolver} from "../src/SplitResolver.sol";
 import {AccessEscrow} from "../src/AccessEscrow.sol";
+import {FractionalVaultFactory} from "../src/FractionalVaultFactory.sol";
 import {IAfroMeetNFT} from "../src/interfaces/IAfroMeetNFT.sol";
+import {IFractionalVaultFactory} from "../src/interfaces/IFractionalVaultFactory.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
 contract AccessEscrowTest is Test {
@@ -15,6 +17,7 @@ contract AccessEscrowTest is Test {
     AccessRegistry registry;
     SplitResolver splits;
     AccessEscrow escrow;
+    FractionalVaultFactory vaultFactory;
     MockUSDC usdc;
 
     address operator = makeAddr("operator");
@@ -34,7 +37,10 @@ contract AccessEscrowTest is Test {
         nft = new AfroMeetNFT(usdc, new CreatorDAOFactory());
         registry = new AccessRegistry(IAfroMeetNFT(address(nft)));
         splits = new SplitResolver(IAfroMeetNFT(address(nft)));
-        escrow = new AccessEscrow(usdc, registry, splits, operator);
+        vaultFactory = new FractionalVaultFactory();
+        escrow = new AccessEscrow(
+            usdc, registry, splits, IFractionalVaultFactory(address(vaultFactory)), operator
+        );
         splits.setEscrow(address(escrow));
 
         vm.prank(creator);
@@ -145,6 +151,79 @@ contract AccessEscrowTest is Test {
 
         assertEq(usdc.balanceOf(treasury), PRICE / 100); // 1% to the real ecosystem treasury
         assertEq(usdc.balanceOf(address(escrow)), 0); // no stranded funds
+    }
+
+    function test_OpenSession_RevertOnDuplicateId() public {
+        vm.startPrank(operator);
+        escrow.openSession("s1", listener, tokenId, PRICE);
+        vm.expectRevert("session exists");
+        escrow.openSession("s1", listener, tokenId, PRICE);
+        vm.stopPrank();
+    }
+
+    function test_OpenSession_RevertOnZeroListener() public {
+        vm.prank(operator);
+        vm.expectRevert("listener=0");
+        escrow.openSession("s1", address(0), tokenId, PRICE);
+    }
+
+    function test_Settle_RevertWhenInactiveConfig() public {
+        vm.prank(creator);
+        uint256 t2 = nft.mintWork("ipfs://unconfigured"); // minted but never configured → inactive
+        vm.startPrank(operator);
+        escrow.openSession("s2", listener, t2, PRICE);
+        vm.expectRevert("inactive");
+        escrow.settle("s2", ELAPSED);
+        vm.stopPrank();
+    }
+
+    function test_Settle_RevertWhenNoSplits() public {
+        vm.prank(creator);
+        uint256 t2 = nft.mintWork("ipfs://nosplits");
+        vm.prank(creator);
+        registry.setConfig(t2, PRICE, PRICE, RATE, AccessRegistry.AccessMode.TIMED, MIN_SECONDS);
+        vm.startPrank(operator);
+        escrow.openSession("s2", listener, t2, PRICE);
+        vm.expectRevert("no splits"); // configured but no split recipients set
+        escrow.settle("s2", ELAPSED);
+        vm.stopPrank();
+    }
+
+    function test_Constructor_RevertOnZeroFactory() public {
+        vm.expectRevert("factory=0");
+        new AccessEscrow(usdc, registry, splits, IFractionalVaultFactory(address(0)), operator);
+    }
+
+    function test_Settle_DiscreteRevertWhenExceedsAuthorised() public {
+        vm.prank(creator);
+        registry.setConfig(tokenId, PRICE, PRICE, 0, AccessRegistry.AccessMode.DISCRETE, 0);
+        vm.startPrank(operator);
+        escrow.openSession("s1", listener, tokenId, PRICE - 1); // authorised below the flat price
+        vm.expectRevert("exceeds authorised");
+        escrow.settle("s1", 0);
+        vm.stopPrank();
+    }
+
+    function test_Settle_RevertWhenCappedToZero() public {
+        // authorised = 0 caps the metered charge to 0, which the amount>0 guard then rejects.
+        vm.startPrank(operator);
+        escrow.openSession("s1", listener, tokenId, 0);
+        vm.expectRevert("amount=0");
+        escrow.settle("s1", ELAPSED);
+        vm.stopPrank();
+    }
+
+    function test_Settle_NoDaoCutWhenAmountBelowHundred() public {
+        // A flat price under 100 makes the 1% DAO cut round to zero, so the DAO transfer is skipped
+        // and the whole amount flows to the split recipients.
+        vm.prank(creator);
+        registry.setConfig(tokenId, 50, 50, 0, AccessRegistry.AccessMode.DISCRETE, 0);
+        vm.startPrank(operator);
+        escrow.openSession("s1", listener, tokenId, 50);
+        escrow.settle("s1", 0);
+        vm.stopPrank();
+        assertEq(usdc.balanceOf(treasury), 0); // daoCut rounded to 0
+        assertEq(usdc.balanceOf(creator) + usdc.balanceOf(producer), 50);
     }
 
     function test_Settle_RoundingDustGoesToLastRecipient() public {
