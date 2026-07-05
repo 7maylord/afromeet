@@ -86,4 +86,50 @@ contract SplitResolverTest is Test {
         vm.expectRevert("escrow set");
         resolver.setEscrow(makeAddr("other"));
     }
+
+    function test_SetEscrow_OnlyAdmin() public {
+        SplitResolver fresh = new SplitResolver(IAfroMeetNFT(address(nft)));
+        vm.prank(label);
+        vm.expectRevert("not admin");
+        fresh.setEscrow(escrow);
+    }
+
+    function test_SetEscrow_RevertOnZero() public {
+        SplitResolver fresh = new SplitResolver(IAfroMeetNFT(address(nft)));
+        vm.expectRevert("escrow=0");
+        fresh.setEscrow(address(0));
+    }
+
+    function test_SetSplits_RevertOnBadLength() public {
+        address[] memory r = new address[](2);
+        uint256[] memory bps = new uint256[](1);
+        r[0] = creator;
+        r[1] = producer;
+        bps[0] = 10000;
+        vm.prank(creator);
+        vm.expectRevert("bad length");
+        resolver.setSplits(tokenId, r, bps);
+    }
+
+    function test_SetSplits_RevertOnZeroRecipient() public {
+        (address[] memory r, uint256[] memory bps) = _split(7000, 3000);
+        r[0] = address(0);
+        vm.prank(creator);
+        vm.expectRevert("recipient=0");
+        resolver.setSplits(tokenId, r, bps);
+    }
+
+    function test_SetSplits_RevertOnZeroBps() public {
+        (address[] memory r, uint256[] memory bps) = _split(0, 10000);
+        vm.prank(creator);
+        vm.expectRevert("bps=0");
+        resolver.setSplits(tokenId, r, bps);
+    }
+
+    function test_SplitCount() public {
+        (address[] memory r, uint256[] memory bps) = _split(7000, 3000);
+        vm.prank(creator);
+        resolver.setSplits(tokenId, r, bps);
+        assertEq(resolver.splitCount(tokenId), 2);
+    }
 }

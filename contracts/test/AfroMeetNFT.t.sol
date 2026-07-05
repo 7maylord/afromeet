@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {CreatorDAOFactory} from "../src/CreatorDAOFactory.sol";
 import {AfroMeetNFT} from "../src/AfroMeetNFT.sol";
 import {CreatorVibeToken} from "../src/CreatorVibeToken.sol";
+import {IAccessRegistrySetup, ISplitResolverSetup} from "../src/interfaces/IAccessSetup.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
 contract AfroMeetNFTTest is Test {
@@ -17,6 +18,22 @@ contract AfroMeetNFTTest is Test {
     function setUp() public {
         usdc = new MockUSDC();
         nft = new AfroMeetNFT(usdc, new CreatorDAOFactory());
+    }
+
+    function test_Constructor_RevertOnZeroUsdc() public {
+        CreatorDAOFactory f = new CreatorDAOFactory();
+        vm.expectRevert("usdc=0");
+        new AfroMeetNFT(MockUSDC(address(0)), f);
+    }
+
+    function test_Constructor_RevertOnZeroDaoFactory() public {
+        vm.expectRevert("daoFactory=0");
+        new AfroMeetNFT(usdc, CreatorDAOFactory(address(0)));
+    }
+
+    function test_SetAccessLayer_RevertOnZeroAddress() public {
+        vm.expectRevert("addr=0");
+        nft.setAccessLayer(IAccessRegistrySetup(address(0)), ISplitResolverSetup(address(0)));
     }
 
     function test_MintWork_MintsToCreatorAndRecordsCreator() public {
