@@ -13,6 +13,7 @@ import {AfroMeetMarketplace} from "../src/AfroMeetMarketplace.sol";
 import {FractionalVaultFactory} from "../src/FractionalVaultFactory.sol";
 import {IAfroMeetNFT} from "../src/interfaces/IAfroMeetNFT.sol";
 import {IFractionalVaultFactory} from "../src/interfaces/IFractionalVaultFactory.sol";
+import {IAccessRegistrySetup, ISplitResolverSetup} from "../src/interfaces/IAccessSetup.sol";
 
 /// @notice Deploys and wires the full AfroMeet contract suite.
 /// @dev    Env: USDC_ADDRESS (required), OPERATOR_ADDRESS and CULTURAL_POOL_ADDRESS (optional,
@@ -39,6 +40,11 @@ contract DeployAfroMeet is Script {
         AfroMeetNFT nft = new AfroMeetNFT(IERC20(usdc), daoFactory);
         SplitResolver splits = new SplitResolver(IAfroMeetNFT(address(nft)));
         AccessRegistry registry = new AccessRegistry(IAfroMeetNFT(address(nft)));
+        // Wire the access + split layers back into the NFT so mintWorkWithSetup (single-signature
+        // mint) can configure a freshly-minted work on the creator's behalf.
+        nft.setAccessLayer(
+            IAccessRegistrySetup(address(registry)), ISplitResolverSetup(address(splits))
+        );
         AfroMeetRoyalty royalty = new AfroMeetRoyalty(IAfroMeetNFT(address(nft)));
         // Vault factory is deployed before the escrow so the escrow can route curators' splits to
         // their vaults at settlement (the factory has no dependency back on the escrow).

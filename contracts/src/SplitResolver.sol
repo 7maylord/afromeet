@@ -40,6 +40,17 @@ contract SplitResolver {
     /// @notice Set or replace the split for a work. Only the creator, and only before lock.
     function setSplits(uint256 tokenId, address[] calldata recipients, uint256[] calldata bps) external {
         require(msg.sender == nft.creatorOf(tokenId), "not creator");
+        _setSplits(tokenId, recipients, bps);
+    }
+
+    /// @notice Set a freshly-minted work's split on the creator's behalf. Callable only by the NFT
+    ///         contract during its single-signature mint flow (the NFT has just recorded the creator).
+    function setSplitsFrom(uint256 tokenId, address[] calldata recipients, uint256[] calldata bps) external {
+        require(msg.sender == address(nft), "not nft");
+        _setSplits(tokenId, recipients, bps);
+    }
+
+    function _setSplits(uint256 tokenId, address[] calldata recipients, uint256[] calldata bps) internal {
         require(!locked[tokenId], "locked");
         require(recipients.length == bps.length && recipients.length > 0, "bad length");
 

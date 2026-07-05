@@ -8,6 +8,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {CreatorVibeToken} from "./CreatorVibeToken.sol";
 import {DAOTreasury} from "./DAOTreasury.sol";
 import {CreatorDAOFactory} from "./CreatorDAOFactory.sol";
+import {IAccessRegistrySetup, ISplitResolverSetup} from "./interfaces/IAccessSetup.sol";
 
 /// @title AfroMeetNFT
 /// @notice Main ERC-721 contract for creative works (music, video, writing, artwork, photography).
@@ -36,18 +37,62 @@ contract AfroMeetNFT is ERC721URIStorage, ReentrancyGuard {
     mapping(address creator => Ecosystem) public ecosystems;
     mapping(uint256 tokenId => address creator) public creatorOf;
 
+    /// @notice One-time admin permitted to wire the access + split layers (the deployer).
+    address public immutable admin;
+    /// @notice Access + split layers, wired once post-deploy to enable single-signature minting.
+    IAccessRegistrySetup public accessRegistry;
+    ISplitResolverSetup public splitResolver;
+
     event EcosystemCreated(address indexed creator, address token, address dao, address treasury);
     event WorkMinted(uint256 indexed tokenId, address indexed creator, string uri);
+    event AccessLayerSet(address registry, address resolver);
 
     constructor(IERC20 usdc_, CreatorDAOFactory daoFactory_) ERC721("AfroMeet Work", "AFRO") {
         require(address(usdc_) != address(0), "usdc=0");
         require(address(daoFactory_) != address(0), "daoFactory=0");
         usdc = usdc_;
         daoFactory = daoFactory_;
+        admin = msg.sender;
+    }
+
+    /// @notice One-time wiring of the AccessRegistry + SplitResolver (deployed after this contract),
+    ///         which enables the single-signature `mintWorkWithSetup` flow.
+    function setAccessLayer(IAccessRegistrySetup registry_, ISplitResolverSetup resolver_) external {
+        require(msg.sender == admin, "not admin");
+        require(address(accessRegistry) == address(0), "already set");
+        require(address(registry_) != address(0) && address(resolver_) != address(0), "addr=0");
+        accessRegistry = registry_;
+        splitResolver = resolver_;
+        emit AccessLayerSet(address(registry_), address(resolver_));
     }
 
     /// @notice Mint a new creative work. The caller is the creator; the work mints to them.
     function mintWork(string calldata uri) external nonReentrant returns (uint256 tokenId) {
+        return _mintWork(uri);
+    }
+
+    /// @notice Mint a work, set its access config, and set its royalty splits in one transaction —
+    ///         a single signature instead of three. The NFT configures the freshly-minted token on
+    ///         the creator's (msg.sender's) behalf via the NFT-gated setup functions.
+    function mintWorkWithSetup(
+        string calldata uri,
+        uint256 pricePerAccess,
+        uint256 discoveryPrice,
+        uint256 ratePerSecond,
+        uint8 mode,
+        uint256 minAccessSeconds,
+        address[] calldata recipients,
+        uint256[] calldata bps
+    ) external nonReentrant returns (uint256 tokenId) {
+        require(address(accessRegistry) != address(0), "access layer unset");
+        tokenId = _mintWork(uri);
+        accessRegistry.setConfigFrom(
+            tokenId, msg.sender, pricePerAccess, discoveryPrice, ratePerSecond, mode, minAccessSeconds
+        );
+        splitResolver.setSplitsFrom(tokenId, recipients, bps);
+    }
+
+    function _mintWork(string calldata uri) internal returns (uint256 tokenId) {
         address creator = msg.sender;
         if (!ecosystems[creator].exists) {
             _createCreatorEcosystem(creator);

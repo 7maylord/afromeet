@@ -46,6 +46,34 @@ contract AccessRegistry {
         uint256 minAccessSeconds
     ) external {
         require(msg.sender == nft.creatorOf(tokenId), "not creator");
+        _setConfig(tokenId, msg.sender, pricePerAccess, discoveryPrice, ratePerSecond, mode, minAccessSeconds);
+    }
+
+    /// @notice Configure a freshly-minted work on the creator's behalf. Callable only by the NFT
+    ///         contract during its single-signature mint flow — it authoritatively passes the
+    ///         creator, so the DAO treasury still resolves from that creator's own ecosystem.
+    function setConfigFrom(
+        uint256 tokenId,
+        address creator,
+        uint256 pricePerAccess,
+        uint256 discoveryPrice,
+        uint256 ratePerSecond,
+        AccessMode mode,
+        uint256 minAccessSeconds
+    ) external {
+        require(msg.sender == address(nft), "not nft");
+        _setConfig(tokenId, creator, pricePerAccess, discoveryPrice, ratePerSecond, mode, minAccessSeconds);
+    }
+
+    function _setConfig(
+        uint256 tokenId,
+        address creator,
+        uint256 pricePerAccess,
+        uint256 discoveryPrice,
+        uint256 ratePerSecond,
+        AccessMode mode,
+        uint256 minAccessSeconds
+    ) internal {
         if (mode == AccessMode.TIMED) {
             // Metered per second: needs a positive rate and a skip-gate threshold.
             require(ratePerSecond > 0, "rate=0");
@@ -60,7 +88,7 @@ contract AccessRegistry {
             ratePerSecond: ratePerSecond,
             mode: mode,
             minAccessSeconds: minAccessSeconds,
-            daoTreasury: nft.treasuryOf(msg.sender),
+            daoTreasury: nft.treasuryOf(creator),
             active: true
         });
         emit ConfigSet(tokenId, pricePerAccess, discoveryPrice, mode);
