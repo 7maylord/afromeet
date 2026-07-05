@@ -2,6 +2,7 @@
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import Image from "next/image";
+import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { ethers } from "ethers";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ import {
   Image as ImageIcon,
   Coins,
   Loader2,
+  ExternalLink,
 } from "lucide-react";
 
 const BACKEND_URL =
@@ -55,6 +57,29 @@ async function decryptGatedContent(c: {
     return { text: new TextDecoder().decode(plain) };
   }
   return { url: URL.createObjectURL(new Blob([plain], { type: c.mediaType })) };
+}
+
+/** Resolves encrypted or unencrypted gated content, loading plain text if writing. */
+async function resolveGatedContent(content: any, category: string): Promise<{ url?: string; content?: string }> {
+  if (content.encrypted) {
+    const dec = await decryptGatedContent(content);
+    return { url: dec.url, content: dec.text };
+  }
+  
+  // For unencrypted writing/text files, fetch the text content
+  if (category === "writing" || content.mediaType?.startsWith("text") || (content.url && (content.url.endsWith(".txt") || content.url.includes("/ipfs/")))) {
+    try {
+      const res = await fetch(content.url);
+      const ct = res.headers.get("content-type") || "";
+      if (ct.startsWith("text/") || ct.startsWith("application/json") || category === "writing" || content.url.endsWith(".txt")) {
+        const text = await res.text();
+        return { content: text };
+      }
+    } catch (err) {
+      console.warn("Failed to fetch plain text content:", err);
+    }
+  }
+  return { url: content.url };
 }
 
 interface WorkItem {
@@ -129,6 +154,9 @@ export default function MediaPlayer() {
       setApproving(false);
     }
   };
+
+  // Timed session decrypted content
+  const [decryptedContent, setDecryptedContent] = useState<{ content?: string; url?: string } | null>(null);
 
   // Discrete unlock state
   const [unlockedContents, setUnlockedContents] = useState<
@@ -245,15 +273,19 @@ export default function MediaPlayer() {
           const gated = await fetch(
             `${BACKEND_URL}/access/session/${res.sessionId}/content`,
           ).then((r) => r.json());
-          const src = gated.encrypted
-            ? (await decryptGatedContent(gated)).url
-            : gated.url;
-          if (src) {
-            setDecryptedUrl(src);
-            if (audioRef.current) audioRef.current.src = src;
+          
+          const unlocked = await resolveGatedContent(gated, selectedWork.category);
+          setDecryptedContent(unlocked);
+          
+          if (unlocked.url && (selectedWork.category === "music" || selectedWork.category === "film")) {
+            setDecryptedUrl(unlocked.url);
+            if (audioRef.current) {
+              audioRef.current.src = unlocked.url;
+              audioRef.current.load();
+            }
           }
-        } catch {
-          /* fall back to any public src on the element */
+        } catch (err) {
+          console.error("Failed to decrypt timed content:", err);
         }
 
         setIsPlaying(true);
@@ -262,9 +294,9 @@ export default function MediaPlayer() {
           text: "Session opened — streaming, metered per second.",
         });
 
-        if (audioRef.current) {
+        if (audioRef.current && (selectedWork.category === "music" || selectedWork.category === "film")) {
           audioRef.current.currentTime = 0;
-          audioRef.current.play().catch(() => undefined);
+          audioRef.current.play().catch((e) => console.warn("Audio play failed:", e));
         }
 
         timerRef.current = setInterval(() => {
@@ -341,19 +373,16 @@ export default function MediaPlayer() {
       const content = await res.json();
 
       // 3. Decrypt locally (key released post-payment) and render.
-      let unlocked: { content?: string; url?: string } = {};
-      if (content.encrypted) {
-        const dec = await decryptGatedContent(content);
-        unlocked = { url: dec.url, content: dec.text };
-      } else {
-        unlocked = { url: content.url };
-      }
+      const unlocked = await resolveGatedContent(content, selectedWork.category);
       setUnlockedContents((prev) => ({ ...prev, [selectedWork.id]: unlocked }));
 
       // If the unlocked content is audio, set it as the audio source so it can play.
       if (unlocked.url && (selectedWork.category === "music" || selectedWork.category === "film")) {
         setDecryptedUrl(unlocked.url);
-        if (audioRef.current) audioRef.current.src = unlocked.url;
+        if (audioRef.current) {
+          audioRef.current.src = unlocked.url;
+          audioRef.current.load();
+        }
       }
 
       setStatusMsg({
@@ -381,6 +410,12 @@ export default function MediaPlayer() {
     setSessionId(null);
     setStatusMsg(null);
     setDecryptedUrl(null);
+    setDecryptedContent(null);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current.load();
+    }
     /* eslint-enable react-hooks/set-state-in-effect */
 
     if (!selectedWork) return;
@@ -522,16 +557,18 @@ export default function MediaPlayer() {
       {(selectedWork.category === "music" || selectedWork.category === "film" || selectedWork.mode === "TIMED") && (
         <audio
           ref={audioRef}
-          src={decryptedUrl ?? undefined}
           className="hidden"
         />
       )}
 
       {/* Works List */}
       <div className="md:col-span-1 space-y-4">
-        <h3 className="text-zinc-400 font-semibold uppercase tracking-wider text-xs">
-          Catalogue
-        </h3>
+        <Link href="/app/catalogue" className="group inline-flex items-center gap-1.5 text-zinc-400 hover:text-kente-gold transition-all">
+          <h3 className="font-semibold uppercase tracking-wider text-xs cursor-pointer">
+            Catalogue
+          </h3>
+          <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity" />
+        </Link>
         <div className="space-y-3 max-h-[360px] overflow-y-auto pr-2">
           {works.map((w) => (
             <button
@@ -593,45 +630,77 @@ export default function MediaPlayer() {
           {/* Center Screen */}
           <div className="flex-1 flex flex-col items-center justify-center py-8 z-10">
             {selectedWork.mode === "TIMED" ? (
-              // Timed Media Screen (Heartbeat visual)
-              <div className="text-center space-y-4">
-                <div
-                  className={`w-28 h-28 rounded-full flex items-center justify-center mx-auto border-2 ${
-                    isPlaying
-                      ? "border-kente-gold pulse-gold bg-kente-purple/10"
-                      : "border-zinc-800 bg-zinc-900/30"
-                  }`}
-                >
-                  <span className="font-mono text-2xl font-bold text-white">
-                    {Math.floor(currentTime / 60)}:
-                    {(currentTime % 60).toString().padStart(2, "0")}
-                  </span>
-                </div>
+              // Timed Media Screen (Heartbeat visual + content layout)
+              <div className="w-full flex flex-col items-center gap-6">
+                {/* Timer details */}
+                <div className="text-center space-y-3">
+                  <div
+                    className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto border-2 ${
+                      isPlaying
+                        ? "border-kente-gold pulse-gold bg-kente-purple/10"
+                        : "border-zinc-800 bg-zinc-900/30"
+                    }`}
+                  >
+                    <span className="font-mono text-xl font-bold text-white">
+                      {Math.floor(currentTime / 60)}:
+                      {(currentTime % 60).toString().padStart(2, "0")}
+                    </span>
+                  </div>
 
-                <div className="space-y-1">
-                  <span className="text-zinc-500 text-xs uppercase tracking-wider block">
-                    Access Escrow Session
-                  </span>
-                  <p className="font-mono text-zinc-300 text-xs bg-zinc-950/50 px-3 py-1.5 rounded border border-zinc-850 truncate max-w-sm mx-auto">
-                    {sessionId
-                      ? `Session ID: ${sessionId.slice(0, 16)}...`
-                      : "Inactive"}
-                  </p>
-                </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider block">
+                      Access Escrow Session
+                    </span>
+                    <p className="font-mono text-zinc-400 text-[10px] bg-zinc-950/50 px-2.5 py-1 rounded border border-zinc-850 truncate max-w-xs mx-auto">
+                      {sessionId
+                        ? `Session ID: ${sessionId.slice(0, 16)}...`
+                        : "Inactive"}
+                    </p>
+                  </div>
 
-                {isPlaying && (
-                  <div className="flex flex-col items-center gap-1 text-zinc-400 text-xs">
-                    <div className="flex items-center gap-2">
-                      <Coins className="w-4 h-4 text-kente-gold" />
-                      <span>Accumulating: </span>
-                      <span className="font-mono text-white font-bold">
-                        ${(currentTime * rateUsdc).toFixed(6)} USDC
+                  {isPlaying && (
+                    <div className="flex flex-col items-center gap-0.5 text-zinc-400 text-xs">
+                      <div className="flex items-center gap-1.5 justify-center">
+                        <Coins className="w-3.5 h-3.5 text-kente-gold" />
+                        <span>Accumulating: </span>
+                        <span className="font-mono text-white font-bold">
+                          ${(currentTime * rateUsdc).toFixed(6)} USDC
+                        </span>
+                      </div>
+                      <span className="text-[9px] text-zinc-500">
+                        per-second nanopayment · ${rateUsdc}/s
                       </span>
                     </div>
-                    <span className="text-[10px] text-zinc-500">
-                      per-second nanopayment · ${rateUsdc}/s · pay for exactly
-                      what you hear
-                    </span>
+                  )}
+                </div>
+
+                {/* Gated content displaying inside timed dashboard */}
+                {isPlaying && decryptedContent && (
+                  <div className="w-full border-t border-zinc-850 pt-5 mt-2">
+                    {decryptedContent.content ? (
+                      /* Text content (writing, books, documents) */
+                      <div className="bg-zinc-900/40 p-4 rounded-xl border border-zinc-800 text-zinc-300 text-sm leading-relaxed max-h-[160px] overflow-y-auto">
+                        <p className="whitespace-pre-line">
+                          {decryptedContent.content}
+                        </p>
+                      </div>
+                    ) : decryptedContent.url && selectedWork.category === "music" ? (
+                      /* Audio/music playing track indicator */
+                      <p className="text-center text-volt-light text-xs font-semibold animate-pulse">
+                        🔊 Timed audio streaming active — listening...
+                      </p>
+                    ) : decryptedContent.url ? (
+                      /* Fallback URL content rendering (e.g. image) */
+                      <div className="relative w-40 h-40 bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800 flex items-center justify-center mx-auto">
+                        <Image
+                          src={decryptedContent.url}
+                          alt={selectedWork.title}
+                          fill
+                          className="object-contain p-4"
+                          unoptimized
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>

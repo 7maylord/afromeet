@@ -16,6 +16,7 @@ interface Pick {
   accessTx: string | null;
   backed: boolean;
   at: string;
+  title?: string;
 }
 
 const shortAddr = (a: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
@@ -28,9 +29,26 @@ export default function AgentPicks() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/agent/picks`).then((r) => r.json());
-      setPicks(res.picks ?? []);
-      setAgentId(res.agentId ?? null);
+      const [picksRes, catRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/agent/picks`).then((r) => r.json()),
+        fetch(`${BACKEND_URL}/access/catalogue`).then((r) => r.json()).catch(() => [])
+      ]);
+      
+      const titleMap = new Map<string, string>();
+      if (Array.isArray(catRes)) {
+        catRes.forEach((w: any) => {
+          titleMap.set(String(w.id), w.title || `Work #${w.id}`);
+        });
+      }
+      
+      const rawPicks = picksRes.picks ?? [];
+      const mapped = rawPicks.slice(0, 5).map((p: any) => ({
+        ...p,
+        title: titleMap.get(String(p.tokenId)) || `Work #${p.tokenId}`
+      }));
+      
+      setPicks(mapped);
+      setAgentId(picksRes.agentId ?? null);
     } catch {
       /* backend offline — keep empty state */
     } finally {
@@ -85,7 +103,7 @@ export default function AgentPicks() {
             <tbody>
               {picks.map((p, i) => (
                 <tr key={`${p.tokenId}-${i}`} className="border-b border-zinc-800/60">
-                  <td className="py-3 pr-4 font-medium text-zinc-200">Work #{p.tokenId}</td>
+                  <td className="py-3 pr-4 font-medium text-zinc-200">{p.title}</td>
                   <td className="py-3 pr-4 font-mono text-zinc-400">{shortAddr(p.creator)}</td>
                   <td className="py-3 pr-4 max-w-xs text-zinc-300">{p.note}</td>
                   <td className="py-3 pr-4 text-kente-gold">{Math.round(p.score * 100)}%</td>
