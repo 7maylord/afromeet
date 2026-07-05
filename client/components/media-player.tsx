@@ -22,6 +22,7 @@ import {
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
 const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_ESCROW_ADDRESS ?? '';
+const EXPLORER_URL = process.env.NEXT_PUBLIC_ARC_EXPLORER ?? 'https://testnet.arcscan.app';
 
 const hexToBytes = (h: string) => new Uint8Array((h.match(/.{1,2}/g) ?? []).map((b) => parseInt(b, 16)));
 
@@ -127,11 +128,12 @@ export default function MediaPlayer() {
         signer,
       );
       const tx = await usdc.approve(ESCROW_ADDRESS, ethers.MaxUint256);
+      setStatusMsg({ type: 'info', text: 'USDC approval transaction broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
       setApproved(true);
-      setStatusMsg({ type: 'success', text: 'USDC enabled — the escrow can now meter your playback per second.' });
-    } catch {
-      setStatusMsg({ type: 'error', text: 'USDC approval failed.' });
+      setStatusMsg({ type: 'success', text: 'USDC enabled — the escrow can now meter your playback per second.', txHash: tx.hash });
+    } catch (err) {
+      setStatusMsg({ type: 'error', text: `USDC approval failed: ${(err as Error).message || err}` });
     } finally {
       setApproving(false);
     }
@@ -140,11 +142,26 @@ export default function MediaPlayer() {
   // Discrete unlock state
   const [unlockedContents, setUnlockedContents] = useState<Record<string, { content?: string; url?: string }>>({});
   
-  const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string } | null) => {
+  const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string; txHash?: string } | null) => {
     if (!m) return;
-    if (m.type === 'success') toast.success(m.text);
-    else if (m.type === 'error') toast.error(m.text);
-    else toast.info(m.text);
+    const content = (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-zinc-200">{m.text}</span>
+        {m.txHash && (
+          <a
+            href={`${EXPLORER_URL}/tx/${m.txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-amber-400 hover:text-amber-300 underline font-mono flex items-center gap-1 mt-0.5"
+          >
+            View on Explorer: {m.txHash.slice(0, 12)}…
+          </a>
+        )}
+      </div>
+    );
+    if (m.type === 'success') toast.success(content);
+    else if (m.type === 'error') toast.error(content);
+    else toast.info(content);
   };
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -268,8 +285,10 @@ export default function MediaPlayer() {
           signer,
         );
         const tx = await usdc.transfer(cfg.creator, priceRaw);
+        setStatusMsg({ type: 'info', text: 'Discovery nanopayment transaction broadcasted. Waiting for confirmation…', txHash: tx.hash });
         await tx.wait();
         txHash = tx.hash;
+        setStatusMsg({ type: 'success', text: 'Discovery payment successful on-chain.', txHash: tx.hash });
       }
 
       // 2. Fetch the gated content — the backend releases the key only if the payment verifies.

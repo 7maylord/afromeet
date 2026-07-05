@@ -16,6 +16,7 @@ import {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 const DEFAULT_CREATOR = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
+const EXPLORER_URL = process.env.NEXT_PUBLIC_ARC_EXPLORER ?? 'https://testnet.arcscan.app';
 
 interface Proposal {
   id: string;
@@ -45,11 +46,26 @@ export default function DaoPanel() {
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
 
-  const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string } | null) => {
+  const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string; txHash?: string } | null) => {
     if (!m) return;
-    if (m.type === 'success') toast.success(m.text);
-    else if (m.type === 'error') toast.error(m.text);
-    else toast.info(m.text);
+    const content = (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-zinc-200">{m.text}</span>
+        {m.txHash && (
+          <a
+            href={`${EXPLORER_URL}/tx/${m.txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-amber-400 hover:text-amber-300 underline font-mono flex items-center gap-1 mt-0.5"
+          >
+            View on Explorer: {m.txHash.slice(0, 12)}…
+          </a>
+        )}
+      </div>
+    );
+    if (m.type === 'success') toast.success(content);
+    else if (m.type === 'error') toast.error(content);
+    else toast.info(content);
   };
 
   const fetchDaoData = async () => {
@@ -114,9 +130,10 @@ export default function DaoPanel() {
       const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
       const signer = await provider.getSigner();
       const tx = await signer.sendTransaction({ to, data });
+      setStatusMsg({ type: 'info', text: 'Vote transaction broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
 
-      setStatusMsg({ type: 'success', text: `Vote cast on-chain with your VIBE power. Tx ${tx.hash.slice(0, 10)}…` });
+      setStatusMsg({ type: 'success', text: 'Vote cast on-chain with your VIBE power.', txHash: tx.hash });
       fetchDaoData();
     } catch (err) {
       setStatusMsg({ type: 'error', text: `Vote failed: ${(err as Error).message || err}` });
@@ -148,9 +165,10 @@ export default function DaoPanel() {
       const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
       const signer = await provider.getSigner();
       const tx = await signer.sendTransaction({ to, data });
+      setStatusMsg({ type: 'info', text: 'Proposal deployment broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
 
-      setStatusMsg({ type: 'success', text: `Proposal published on-chain via CreatorDAO. Tx ${tx.hash.slice(0, 10)}…` });
+      setStatusMsg({ type: 'success', text: 'Proposal published on-chain via CreatorDAO.', txHash: tx.hash });
       setShowCreateForm(false);
       setNewTitle('');
       setNewDesc('');

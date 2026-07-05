@@ -19,6 +19,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:300
 const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FRACTIONAL_VAULT_FACTORY_ADDRESS ?? '';
 const NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
+const EXPLORER_URL = process.env.NEXT_PUBLIC_ARC_EXPLORER ?? 'https://testnet.arcscan.app';
 
 const VAULT_ABI = [
   'function buyShares(uint256 shareAmount)',
@@ -68,11 +69,26 @@ export default function MarketplacePanel() {
   const [salePrice, setSalePrice] = useState<Record<string, string>>({});
   const [showSaleConfig, setShowSaleConfig] = useState<Record<string, boolean>>({});
 
-  const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string } | null) => {
+  const setStatusMsg = (m: { type: 'success' | 'info' | 'error'; text: string; txHash?: string } | null) => {
     if (!m) return;
-    if (m.type === 'success') toast.success(m.text);
-    else if (m.type === 'error') toast.error(m.text);
-    else toast.info(m.text);
+    const content = (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-zinc-200">{m.text}</span>
+        {m.txHash && (
+          <a
+            href={`${EXPLORER_URL}/tx/${m.txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-amber-400 hover:text-amber-300 underline font-mono flex items-center gap-1 mt-0.5"
+          >
+            View on Explorer: {m.txHash.slice(0, 12)}…
+          </a>
+        )}
+      </div>
+    );
+    if (m.type === 'success') toast.success(content);
+    else if (m.type === 'error') toast.error(content);
+    else toast.info(content);
   };
 
   const [fractionalizeTokenId, setFractionalizeTokenId] = useState<string>('');
@@ -139,16 +155,19 @@ export default function MarketplacePanel() {
       const signer = await getSigner();
       const cost = BigInt(qty) * item.sharePriceRaw;
 
-      setStatusMsg({ type: 'info', text: `Approving $${(Number(cost) / 1e6).toFixed(4)} USDC…` });
+      setStatusMsg({ type: 'info', text: 'Preparing USDC approval transaction…' });
       const usdc = new ethers.Contract(USDC_ADDRESS, USDC_ABI, signer);
-      await (await usdc.approve(item.vaultAddress, cost)).wait();
+      const approveTx = await usdc.approve(item.vaultAddress, cost);
+      setStatusMsg({ type: 'info', text: 'USDC approval transaction broadcasted. Waiting for confirmation…', txHash: approveTx.hash });
+      await approveTx.wait();
 
       setStatusMsg({ type: 'info', text: `Buying ${qty} shares on Arc…` });
       const vault = new ethers.Contract(item.vaultAddress, VAULT_ABI, signer);
       const tx = await vault.buyShares(qty);
+      setStatusMsg({ type: 'info', text: 'Share purchase transaction broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
 
-      setStatusMsg({ type: 'success', text: `Bought ${qty} shares. You now earn pro-rata access revenue. Tx ${tx.hash.slice(0, 10)}…` });
+      setStatusMsg({ type: 'success', text: `Bought ${qty} shares. You now earn pro-rata access revenue.`, txHash: tx.hash });
       loadItems();
     } catch (err) {
       setStatusMsg({ type: 'error', text: `Share purchase failed: ${(err as Error).message?.slice(0, 120) || err}` });
@@ -174,8 +193,9 @@ export default function MarketplacePanel() {
       const signer = await getSigner();
       const vault = new ethers.Contract(item.vaultAddress, VAULT_ABI, signer);
       const tx = await vault.claimRevenue();
+      setStatusMsg({ type: 'info', text: 'Claim transaction broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
-      setStatusMsg({ type: 'success', text: `Revenue claimed to your wallet. Tx ${tx.hash.slice(0, 10)}…` });
+      setStatusMsg({ type: 'success', text: 'Revenue claimed to your wallet.', txHash: tx.hash });
     } catch (err) {
       setStatusMsg({ type: 'error', text: `Claim failed: ${(err as Error).message?.slice(0, 120) || err}` });
     } finally {
@@ -209,11 +229,12 @@ export default function MarketplacePanel() {
     setActionId(`config-${item.tokenId}`);
     try {
       const signer = await getSigner();
-      setStatusMsg({ type: 'info', text: `Configuring sale: ${shares} shares @ $${priceUsdc} each…` });
+      setStatusMsg({ type: 'info', text: 'Preparing sale configuration transaction…' });
       const vault = new ethers.Contract(item.vaultAddress, VAULT_ABI, signer);
       const tx = await vault.configureSale(shares, priceRaw);
+      setStatusMsg({ type: 'info', text: 'Sale configuration broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
-      setStatusMsg({ type: 'success', text: `Sale configured! ${shares} shares now listed @ $${priceUsdc} USDC each. Tx ${tx.hash.slice(0, 10)}…` });
+      setStatusMsg({ type: 'success', text: `Sale configured! ${shares} shares now listed @ $${priceUsdc} USDC each.`, txHash: tx.hash });
       setShowSaleConfig((s) => ({ ...s, [item.tokenId]: false }));
       loadItems();
     } catch (err) {
@@ -237,7 +258,9 @@ export default function MarketplacePanel() {
 
       setStatusMsg({ type: 'info', text: `Approving NFT #${fractionalizeTokenId} to the vault factory…` });
       const nft = new ethers.Contract(NFT_ADDRESS, NFT_APPROVE_ABI, signer);
-      await (await nft.approve(FACTORY_ADDRESS, fractionalizeTokenId)).wait();
+      const approveTx = await nft.approve(FACTORY_ADDRESS, fractionalizeTokenId);
+      setStatusMsg({ type: 'info', text: 'NFT approval transaction broadcasted. Waiting for confirmation…', txHash: approveTx.hash });
+      await approveTx.wait();
 
       setStatusMsg({ type: 'info', text: 'Deploying the fractional vault on Arc…' });
       const factory = new ethers.Contract(FACTORY_ADDRESS, FACTORY_WRITE_ABI, signer);
@@ -249,9 +272,10 @@ export default function MarketplacePanel() {
         vaultName || `AfroMeet Work ${fractionalizeTokenId} Shares`,
         vaultSymbol || `AM${fractionalizeTokenId}`,
       );
+      setStatusMsg({ type: 'info', text: 'Vault deployment transaction broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
 
-      setStatusMsg({ type: 'success', text: `Vault deployed — NFT #${fractionalizeTokenId} locked, ${totalShares} shares minted. Tx ${tx.hash.slice(0, 10)}…` });
+      setStatusMsg({ type: 'success', text: `Vault deployed — NFT #${fractionalizeTokenId} locked, ${totalShares} shares minted.`, txHash: tx.hash });
       setFractionalizeTokenId('');
       setVaultName('');
       setVaultSymbol('');

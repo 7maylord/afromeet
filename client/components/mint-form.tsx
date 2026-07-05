@@ -15,6 +15,7 @@ import {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 const AFROMEET_NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
+const EXPLORER_URL = process.env.NEXT_PUBLIC_ARC_EXPLORER ?? 'https://testnet.arcscan.app';
 
 interface SplitRecipient {
   address: string;
@@ -138,7 +139,20 @@ export default function MintForm() {
         splits.map((s) => s.address || creatorAddr), // recipients (blank rows → creator)
         splits.map((s) => s.bps),
       );
-      toast.loading(`Mint tx ${mintTx.hash.slice(0, 10)}… confirming.`, { id: tId });
+      toast.loading(
+        <div className="flex flex-col gap-1.5">
+          <span>Mint transaction broadcasted. Waiting for confirmation…</span>
+          <a
+            href={`${EXPLORER_URL}/tx/${mintTx.hash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-amber-400 hover:text-amber-300 underline font-mono flex items-center gap-1 mt-0.5"
+          >
+            View on Explorer: {mintTx.hash.slice(0, 12)}…
+          </a>
+        </div>,
+        { id: tId }
+      );
       const receipt = await mintTx.wait();
 
       const iface = new ethers.Interface([
@@ -166,7 +180,20 @@ export default function MintForm() {
         body: JSON.stringify({ uploadId: up.uploadId }),
       }).catch(() => undefined);
 
-      toast.success(`Work #${tokenId} is live on AfroMeet — it now appears in the catalogue.`, { id: tId });
+      toast.success(
+        <div className="flex flex-col gap-1.5">
+          <span>Work #${tokenId} is live on AfroMeet — it now appears in the catalogue.</span>
+          <a
+            href={`${EXPLORER_URL}/tx/${mintTx.hash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-amber-400 hover:text-amber-300 underline font-mono flex items-center gap-1 mt-0.5"
+          >
+            View on Explorer: {mintTx.hash.slice(0, 12)}…
+          </a>
+        </div>,
+        { id: tId }
+      );
       setTitle('');
       setDescription('');
       setFile(null);
