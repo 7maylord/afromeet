@@ -2,7 +2,7 @@
 
 import { usePrivy, useLogin } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Menu,
   X,
@@ -90,9 +90,15 @@ export default function Landing() {
 
   // Forward into the workspace only right after a fresh login — authenticated
   // visitors can still browse the landing freely (no auto-redirect lock-in).
-  const { login } = useLogin({ onComplete: () => router.push('/app') });
+  // `dest` lets a CTA deep-link into a specific tab/page after entering.
+  const destRef = useRef('/app');
+  const { login } = useLogin({ onComplete: () => router.push(destRef.current) });
 
-  const enter = () => (authenticated ? router.push('/app') : login());
+  const enter = (dest = '/app') => {
+    destRef.current = dest;
+    if (authenticated) router.push(dest);
+    else login();
+  };
 
   return (
     <div className="relative bg-ink">
@@ -120,7 +126,7 @@ export default function Landing() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={enter}
+              onClick={() => enter()}
               className="flex items-center gap-1.5 rounded-xl bg-bone px-4 py-2 text-sm text-ink transition-transform duration-200 hover:scale-105 active:scale-95 sm:px-5"
             >
               {authenticated ? 'Enter' : 'Connect'}
@@ -181,17 +187,17 @@ export default function Landing() {
 
             <div className="animate-fade-up delay-4 mt-8 flex flex-col gap-3 sm:flex-row">
               <button
-                onClick={enter}
+                onClick={() => enter()}
                 className="rounded-xl bg-bone px-7 py-2.5 text-sm text-ink transition-transform duration-200 hover:scale-105 active:scale-95"
               >
                 Enter the press
               </button>
-              <a
-                href="#catalogue"
+              <button
+                onClick={() => enter('/app/catalogue')}
                 className="liquid-glass rounded-xl px-7 py-2.5 text-center text-sm text-bone transition-transform duration-200 hover:scale-105 active:scale-95"
               >
                 Hear the catalogue
-              </a>
+              </button>
             </div>
           </div>
         </div>
@@ -251,7 +257,7 @@ export default function Landing() {
 
         <div className="mt-8 flex items-center gap-2 font-mono text-xs text-white/40">
           <Disc3 className="h-4 w-4 text-volt" />
-          <button onClick={enter} className="transition-colors hover:text-bone">
+          <button onClick={() => enter()} className="transition-colors hover:text-bone">
             + more pressings inside the press →
           </button>
         </div>
@@ -280,7 +286,7 @@ export default function Landing() {
           </div>
 
           <button
-            onClick={enter}
+            onClick={() => enter('/app?tab=studio')}
             className="mt-14 inline-flex items-center gap-1.5 rounded-xl bg-bone px-7 py-2.5 text-sm text-ink transition-transform duration-200 hover:scale-105 active:scale-95"
           >
             Open the studio <ArrowUpRight className="h-4 w-4" strokeWidth={2} />
@@ -372,7 +378,7 @@ export default function Landing() {
             second it&apos;s heard.
           </p>
           <button
-            onClick={enter}
+            onClick={() => enter()}
             className="mt-10 inline-flex items-center gap-1.5 rounded-xl bg-bone px-8 py-3 text-sm text-ink transition-transform duration-200 hover:scale-105 active:scale-95"
           >
             Enter the press <ArrowUpRight className="h-4 w-4" strokeWidth={2} />

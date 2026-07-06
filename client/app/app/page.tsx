@@ -22,12 +22,26 @@ import {
   Loader2 
 } from 'lucide-react';
 
-type TabId = 'discover' | 'studio' | 'marketplace' | 'daos' | 'dashboard' | 'agent';
+const TAB_IDS = ['discover', 'studio', 'marketplace', 'daos', 'dashboard', 'agent'] as const;
+type TabId = (typeof TAB_IDS)[number];
 
 export default function AppHome() {
   const { authenticated, ready } = usePrivy();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabId>('discover');
+  // Initialise the tab from the URL (?tab=) so a reload or deep-link keeps you where you were.
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    if (typeof window === 'undefined') return 'discover';
+    const t = new URLSearchParams(window.location.search).get('tab');
+    return t && (TAB_IDS as readonly string[]).includes(t) ? (t as TabId) : 'discover';
+  });
+
+  // Switch tabs and reflect it in the URL (no navigation) so reloads persist.
+  const selectTab = (id: TabId) => {
+    setActiveTab(id);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', id);
+    window.history.replaceState(null, '', url);
+  };
 
   useEffect(() => {
     if (ready && !authenticated) {
@@ -74,7 +88,7 @@ export default function AppHome() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => selectTab(tab.id)}
                   className={`flex w-full items-center gap-3 rounded-xl border-l-2 px-4 py-3 text-sm tracking-wide transition-all ${
                     active
                       ? 'border-volt bg-volt/12 text-bone'

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { ethers } from "ethers";
 import { toast } from "sonner";
+import { getArcSigner } from "@/lib/wallet";
 import {
   Play,
   Pause,
@@ -123,10 +124,7 @@ export default function MediaPlayer() {
       text: "Approving USDC for per-second streaming…",
     });
     try {
-      const provider = new ethers.BrowserProvider(
-        await wallets[0].getEthereumProvider(),
-      );
-      const signer = await provider.getSigner();
+      const signer = await getArcSigner(wallets[0]);
       const usdc = new ethers.Contract(
         USDC_ADDRESS,
         ["function approve(address spender, uint256 amount) returns (bool)"],
@@ -340,10 +338,7 @@ export default function MediaPlayer() {
           type: "info",
           text: "Paying discovery nanopayment in USDC…",
         });
-        const provider = new ethers.BrowserProvider(
-          await wallets[0].getEthereumProvider(),
-        );
-        const signer = await provider.getSigner();
+        const signer = await getArcSigner(wallets[0]);
         const usdc = new ethers.Contract(
           USDC_ADDRESS,
           ["function transfer(address to, uint256 amount) returns (bool)"],

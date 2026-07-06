@@ -4,6 +4,7 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useState, useRef, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { toast } from 'sonner';
+import { getArcSigner } from '@/lib/wallet';
 import {
   Upload,
   Plus,
@@ -115,8 +116,7 @@ export default function MintForm() {
 
       toast.loading('Minting work NFT on Arc…', { id: tId });
 
-      const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
-      const signer = await provider.getSigner();
+      const signer = await getArcSigner(wallets[0]);
       const creatorAddr = await signer.getAddress();
 
       // 2. Mint + configure access + set royalty splits in a single transaction (one signature).

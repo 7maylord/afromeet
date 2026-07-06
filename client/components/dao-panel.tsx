@@ -4,6 +4,7 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { toast } from 'sonner';
+import { getArcSigner, ensureAllowance } from '@/lib/wallet';
 import {
   Building2,
   Plus,
@@ -163,8 +164,7 @@ export default function DaoPanel() {
       }).then(r => r.json());
       if (!to || !data) throw new Error('No DAO found for this creator');
 
-      const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
-      const signer = await provider.getSigner();
+      const signer = await getArcSigner(wallets[0]);
       const tx = await signer.sendTransaction({ to, data });
       setStatusMsg({ type: 'info', text: 'Vote transaction broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
@@ -193,13 +193,11 @@ export default function DaoPanel() {
     }
     setBuying(true);
     try {
-      const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
-      const signer = await provider.getSigner();
+      const signer = await getArcSigner(wallets[0]);
       const raw = ethers.parseUnits(buyUsdc, 6);
 
-      setStatusMsg({ type: 'info', text: `Approving ${amount} USDC…` });
-      const usdc = new ethers.Contract(USDC_ADDRESS, ['function approve(address,uint256) returns (bool)'], signer);
-      await (await usdc.approve(NFT_ADDRESS, raw)).wait();
+      setStatusMsg({ type: 'info', text: 'Checking USDC approval…' });
+      await ensureAllowance(signer, USDC_ADDRESS, NFT_ADDRESS, raw);
 
       setStatusMsg({ type: 'info', text: `Buying ${amount} VIBE…` });
       const nft = new ethers.Contract(
@@ -247,8 +245,7 @@ export default function DaoPanel() {
       }).then(r => r.json());
       if (!to || !data) throw new Error('No DAO found — mint a work first to create your ecosystem');
 
-      const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
-      const signer = await provider.getSigner();
+      const signer = await getArcSigner(wallets[0]);
       const tx = await signer.sendTransaction({ to, data });
       setStatusMsg({ type: 'info', text: 'Proposal deployment broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();

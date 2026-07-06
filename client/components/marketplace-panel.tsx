@@ -4,6 +4,7 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { toast } from 'sonner';
+import { getArcSigner, ensureAllowance } from '@/lib/wallet';
 import {
   ShoppingBag,
   Layers,
@@ -27,7 +28,6 @@ const VAULT_ABI = [
   'function configureSale(uint256 shares, uint256 pricePerShare)',
   'function totalSupply() view returns (uint256)',
 ];
-const USDC_ABI = ['function approve(address spender, uint256 amount) returns (bool)'];
 const NFT_APPROVE_ABI = ['function approve(address to, uint256 tokenId)'];
 const FACTORY_WRITE_ABI = [
   'function fractionalise(address nft, uint256 tokenId, address revenueToken, uint256 totalShares, string name, string symbol) returns (address)',
@@ -131,8 +131,7 @@ export default function MarketplacePanel() {
   }, [loadItems]);
 
   async function getSigner() {
-    const provider = new ethers.BrowserProvider(await wallets[0].getEthereumProvider());
-    return provider.getSigner();
+    return getArcSigner(wallets[0]);
   }
 
   const handleBuyShares = async (item: MarketplaceItem) => {
@@ -155,11 +154,8 @@ export default function MarketplacePanel() {
       const signer = await getSigner();
       const cost = BigInt(qty) * item.sharePriceRaw;
 
-      setStatusMsg({ type: 'info', text: 'Preparing USDC approval transaction…' });
-      const usdc = new ethers.Contract(USDC_ADDRESS, USDC_ABI, signer);
-      const approveTx = await usdc.approve(item.vaultAddress, cost);
-      setStatusMsg({ type: 'info', text: 'USDC approval transaction broadcasted. Waiting for confirmation…', txHash: approveTx.hash });
-      await approveTx.wait();
+      setStatusMsg({ type: 'info', text: 'Checking USDC approval…' });
+      await ensureAllowance(signer, USDC_ADDRESS, item.vaultAddress, cost);
 
       setStatusMsg({ type: 'info', text: `Buying ${qty} shares on Arc…` });
       const vault = new ethers.Contract(item.vaultAddress, VAULT_ABI, signer);
