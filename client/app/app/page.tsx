@@ -11,6 +11,7 @@ import DaoPanel from '@/components/dao-panel';
 import CreatorDashboard from '@/components/creator-dashboard';
 import AgentMonitor from '@/components/agent-monitor';
 import AgentPicks from '@/components/agent-picks';
+import PaymentHistory from '@/components/payment-history';
 import {
   Play, 
   PlusCircle, 
@@ -101,6 +102,9 @@ export default function AppHome() {
               );
             })}
           </div>
+
+          {/* Payment history — the creator's "you got paid" feed, below the tabs */}
+          <PaymentHistory />
 
           <div className="mt-4 flex flex-col gap-2 border-t border-white/8 px-3 pt-4">
             <button

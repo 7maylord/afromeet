@@ -13,6 +13,14 @@ import {
   SPLIT_RESOLVER_ABI,
 } from '../config/contracts';
 
+export interface PaymentEvent {
+  tokenId: string;
+  amountRaw: string;
+  daoCutRaw: string;
+  txHash: string;
+  timestamp: number;
+}
+
 export interface Proposal {
   proposalId: string;
   description: string;
@@ -201,6 +209,44 @@ export class BlockchainService implements OnModuleInit {
       count++;
     }
     return { totalAmount: total, count };
+  }
+
+  /** Recent access-settlement payments to a creator's works — newest first, with block timestamps. */
+  async getPayments(creator: string, limit = 12): Promise<PaymentEvent[]> {
+    const escrowAddr = this.config.get<string>('contracts.accessEscrow');
+    const tokenIds = await this.getCreatorTokenIds(creator);
+    if (!escrowAddr || tokenIds.length === 0) return [];
+
+    const iface = new ethers.Interface(ACCESS_ESCROW_ABI);
+    const settledTopic = iface.getEvent('Settled')!.topicHash;
+    const logs = await this.syncLogs(`settled:${escrowAddr}`, escrowAddr, [settledTopic]);
+    const want = new Set(tokenIds.map((id) => BigInt(id)));
+
+    const mine = logs.filter((log) => {
+      const parsed = iface.parseLog(log);
+      return parsed && want.has(parsed.args.tokenId as bigint);
+    });
+    const recent = mine.slice(-limit).reverse(); // newest first, capped
+
+    const tsCache = new Map<number, number>();
+    const out: PaymentEvent[] = [];
+    for (const log of recent) {
+      const parsed = iface.parseLog(log)!;
+      let ts = tsCache.get(log.blockNumber);
+      if (ts === undefined) {
+        const block = await this.provider.getBlock(log.blockNumber);
+        ts = block?.timestamp ?? 0;
+        tsCache.set(log.blockNumber, ts);
+      }
+      out.push({
+        tokenId: (parsed.args.tokenId as bigint).toString(),
+        amountRaw: (parsed.args.amount as bigint).toString(),
+        daoCutRaw: (parsed.args.daoCut as bigint).toString(),
+        txHash: log.transactionHash,
+        timestamp: ts,
+      });
+    }
+    return out;
   }
 
   /** A creator DAO's proposals, read from ProposalCreated events + on-chain state/votes. */

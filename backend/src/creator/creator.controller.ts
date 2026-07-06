@@ -25,4 +25,15 @@ export class CreatorController {
       secondarySales: '0', // marketplace royalties — not yet indexed
     };
   }
+
+  @ApiOperation({ summary: 'Recent payments to a creator (access settlements), newest first' })
+  @ApiParam({ name: 'address', description: 'Creator wallet address (0x…)', example: '0xAbCd…' })
+  @ApiResponse({
+    status: 200,
+    description: 'Array of { tokenId, amountRaw (6dp USDC), daoCutRaw, txHash, timestamp (unix secs) }',
+  })
+  @Get(':address/payments')
+  async payments(@Param('address') address: string) {
+    return this.blockchain.getPayments(address);
+  }
 }
