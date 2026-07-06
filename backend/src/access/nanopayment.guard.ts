@@ -5,9 +5,13 @@ import {
   HttpStatus,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BlockchainService } from '../blockchain/blockchain.service';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { UsedPayment, UsedPaymentDocument } from '../database/schemas/used-payment.schema';
 
 const ERC20_TRANSFER_TOPIC =
   '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
@@ -26,6 +30,7 @@ export class NanopaymentGuard implements CanActivate {
   constructor(
     private readonly blockchain: BlockchainService,
     private readonly config: ConfigService,
+    @Optional() @InjectModel(UsedPayment.name) private readonly usedPayments?: Model<UsedPaymentDocument>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -61,7 +66,7 @@ export class NanopaymentGuard implements CanActivate {
       );
     }
 
-    if (this.usedTxHashes.has(txHash)) {
+    if (this.usedTxHashes.has(txHash) || (this.usedPayments && await this.usedPayments.exists({ txHash }))) {
       throw new HttpException({ error: 'Payment already used' }, HttpStatus.PAYMENT_REQUIRED);
     }
 
@@ -74,6 +79,7 @@ export class NanopaymentGuard implements CanActivate {
     }
 
     this.usedTxHashes.add(txHash);
+    if (this.usedPayments) await this.usedPayments.create({ txHash });
     return true;
   }
 

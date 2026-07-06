@@ -1,21 +1,21 @@
 [
   {
-    "type": "function",
-    "name": "createDAO",
     "inputs": [
       {
+        "internalType": "contract IVotes",
         "name": "token",
-        "type": "address",
-        "internalType": "contract IVotes"
+        "type": "address"
       }
     ],
+    "name": "createDAO",
     "outputs": [
       {
+        "internalType": "address",
         "name": "",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       }
     ],
-    "stateMutability": "nonpayable"
+    "stateMutability": "nonpayable",
+    "type": "function"
   }
 ]

@@ -36,13 +36,13 @@ export default function AgentPicks() {
       
       const titleMap = new Map<string, string>();
       if (Array.isArray(catRes)) {
-        catRes.forEach((w: any) => {
+        (catRes as Array<{ id: string; title?: string }>).forEach((w) => {
           titleMap.set(String(w.id), w.title || `Work #${w.id}`);
         });
       }
       
-      const rawPicks = picksRes.picks ?? [];
-      const mapped = rawPicks.slice(0, 5).map((p: any) => ({
+      const rawPicks = (picksRes.picks ?? []) as Pick[];
+      const mapped = rawPicks.slice(0, 5).map((p) => ({
         ...p,
         title: titleMap.get(String(p.tokenId)) || `Work #${p.tokenId}`
       }));
@@ -57,6 +57,7 @@ export default function AgentPicks() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, []);
 

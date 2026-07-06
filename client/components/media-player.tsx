@@ -27,7 +27,9 @@ const BACKEND_URL =
 const USDC_ADDRESS =
   process.env.NEXT_PUBLIC_USDC_ADDRESS ??
   "0x3600000000000000000000000000000000000000";
-const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ACCESS_ESCROW_ADDRESS ?? "";
+const ESCROW_ADDRESS =
+  process.env.NEXT_PUBLIC_ACCESS_ESCROW_ADDRESS ??
+  "0x758b2dd0e09ec736aafdfdeee26e87f4b1c4315a";
 const EXPLORER_URL =
   process.env.NEXT_PUBLIC_ARC_EXPLORER ?? "https://testnet.arcscan.app";
 
@@ -61,7 +63,10 @@ async function decryptGatedContent(c: {
 }
 
 /** Resolves encrypted or unencrypted gated content, loading plain text if writing. */
-async function resolveGatedContent(content: any, category: string): Promise<{ url?: string; content?: string }> {
+async function resolveGatedContent(
+  content: { encrypted?: boolean; cipherUrl: string; key: string; iv: string; mediaType: string; url?: string },
+  category: string,
+): Promise<{ url?: string; content?: string }> {
   if (content.encrypted) {
     const dec = await decryptGatedContent(content);
     return { url: dec.url, content: dec.text };
@@ -70,6 +75,7 @@ async function resolveGatedContent(content: any, category: string): Promise<{ ur
   // For unencrypted writing/text files, fetch the text content
   if (category === "writing" || content.mediaType?.startsWith("text") || (content.url && (content.url.endsWith(".txt") || content.url.includes("/ipfs/")))) {
     try {
+      if (!content.url) return {};
       const res = await fetch(content.url);
       const ct = res.headers.get("content-type") || "";
       if (ct.startsWith("text/") || ct.startsWith("application/json") || category === "writing" || content.url.endsWith(".txt")) {
@@ -124,6 +130,7 @@ export default function MediaPlayer() {
       text: "Approving USDC for per-second streaming…",
     });
     try {
+      if (!ethers.isAddress(ESCROW_ADDRESS)) throw new Error("Access escrow address is not configured");
       const signer = await getArcSigner(wallets[0]);
       const usdc = new ethers.Contract(
         USDC_ADDRESS,
@@ -202,42 +209,12 @@ export default function MediaPlayer() {
       if (timerRef.current) clearInterval(timerRef.current);
       if (audioRef.current) audioRef.current.pause();
 
-      if (currentTime >= selectedWork.minAccessSeconds && sessionId) {
-        setLoading(true);
-        setStatusMsg({
-          type: "info",
-          text: "Settling timed access session on Arc...",
-        });
-        try {
-          const res = await fetch(`${BACKEND_URL}/access/session/settle`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId, elapsedSeconds: currentTime }),
-          }).then((r) => r.json());
-
-          setStatusMsg({
-            type: "success",
-            text: `Settled ${currentTime}s × $${rateUsdc}/s = $${(currentTime * rateUsdc).toFixed(6)} USDC on Arc.`,
-            txHash: res.txHash,
-          });
-        } catch (err) {
-          setStatusMsg({
-            type: "error",
-            text: "Settlement transaction failed on-chain.",
-          });
-        } finally {
-          setLoading(false);
-          setSessionId(null);
-          setCurrentTime(0);
-        }
-      } else {
-        setStatusMsg({
-          type: "info",
-          text: `Session closed early (${currentTime}s / ${selectedWork.minAccessSeconds}s required). No USDC settled.`,
-        });
-        setSessionId(null);
-        setCurrentTime(0);
-      }
+      setStatusMsg({
+        type: "success",
+        text: "Playback stopped — minimum access was settled before the master key was released.",
+      });
+      setSessionId(null);
+      setCurrentTime(0);
     } else {
       // Start Playback -> Open session first
       if (!authenticated) {
@@ -253,24 +230,38 @@ export default function MediaPlayer() {
         text: "Initializing payment session on Arc...",
       });
       try {
-        const res = await fetch(`${BACKEND_URL}/access/session/open`, {
+        if (!wallets[0] || !user?.wallet?.address) throw new Error("Connect a wallet first");
+        const signer = await getArcSigner(wallets[0]);
+        const nonce = crypto.randomUUID();
+        const timestamp = Date.now();
+        const signature = await signer.signMessage(
+          `AfroMeet session ${selectedWork.id} ${user.wallet.address.toLowerCase()} ${nonce} ${timestamp}`,
+        );
+        const openResponse = await fetch(`${BACKEND_URL}/access/session/open`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             tokenId: selectedWork.id,
             listener: user?.wallet?.address,
+            signature,
+            nonce,
+            timestamp,
             // Pre-authorise a session budget (~10 min of playback) — the contract caps to this.
             authorisedUsdc: Math.max(0.1, rateUsdc * 600),
           }),
-        }).then((r) => r.json());
+        });
+        if (!openResponse.ok) throw new Error(await openResponse.text());
+        const res = await openResponse.json();
 
         setSessionId(res.sessionId);
 
         // Release + decrypt the gated master for this open session (no double-charge).
         try {
-          const gated = await fetch(
+          const contentResponse = await fetch(
             `${BACKEND_URL}/access/session/${res.sessionId}/content`,
-          ).then((r) => r.json());
+          );
+          if (!contentResponse.ok) throw new Error(await contentResponse.text());
+          const gated = await contentResponse.json();
           
           const unlocked = await resolveGatedContent(gated, selectedWork.category);
           setDecryptedContent(unlocked);
@@ -289,7 +280,7 @@ export default function MediaPlayer() {
         setIsPlaying(true);
         setStatusMsg({
           type: "info",
-          text: "Session opened — streaming, metered per second.",
+          text: `Minimum ${selectedWork.minAccessSeconds}s access settled — streaming unlocked.`,
         });
 
         if (audioRef.current && (selectedWork.category === "music" || selectedWork.category === "film")) {

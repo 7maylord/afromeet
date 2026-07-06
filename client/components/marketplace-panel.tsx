@@ -42,6 +42,7 @@ interface RawWork {
   sharePriceRaw: string;
   sharesForSale: number;
   totalShares: number;
+  curator: string | null;
 }
 
 interface MarketplaceItem {
@@ -53,11 +54,13 @@ interface MarketplaceItem {
   availableShares?: number;
   sharePriceRaw?: bigint; // USDC (6dp) per share, from the vault
   totalShares?: number; // total supply of the vault
+  curator?: string;
 }
 
 export default function MarketplacePanel() {
   const { authenticated } = usePrivy();
   const { wallets } = useWallets();
+  const connectedAddress = wallets[0]?.address.toLowerCase();
 
   const [items, setItems] = useState<MarketplaceItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -114,6 +117,7 @@ export default function MarketplacePanel() {
           item.sharePriceRaw = BigInt(w.sharePriceRaw || '0');
           item.availableShares = w.sharesForSale;
           item.totalShares = w.totalShares;
+          item.curator = w.curator ?? undefined;
         }
         return item;
       });
@@ -330,7 +334,7 @@ export default function MarketplacePanel() {
                     </div>
 
                     {/* Configure Sale toggle & inline form */}
-                    {showSaleConfig[item.tokenId] ? (
+                    {connectedAddress === item.curator?.toLowerCase() && (showSaleConfig[item.tokenId] ? (
                       <div className="bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 space-y-2">
                         <p className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold flex items-center gap-1">
                           <Tag className="w-3 h-3 text-kente-gold" /> Configure Sale (curator only)
@@ -389,7 +393,7 @@ export default function MarketplacePanel() {
                         <Settings className="w-3.5 h-3.5 text-kente-gold" />
                         {item.sharePriceRaw > 0n ? 'Reconfigure Sale' : 'Configure Sale'}
                       </button>
-                    )}
+                    ))}
 
                     {/* Buy shares — only show when a sale is active */}
                     {item.sharePriceRaw > 0n && (item.availableShares ?? 0) > 0 && (

@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AgentService } from './agent.service';
 import { WalletsService } from '../circle/wallets.service';
 import { Erc8004Service } from '../circle/erc8004.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
+import { OperatorGuard } from '../config/operator.guard';
 
 @ApiTags('agent')
 @Controller('agent')
@@ -43,6 +44,7 @@ export class AgentController {
   @ApiOperation({ summary: 'Manually trigger one autonomous pass (cron also runs every 30m)' })
   @ApiResponse({ status: 201, description: 'Agent loop result: works visited, payments made, picks recorded' })
   @Post('run')
+  @UseGuards(OperatorGuard)
   run() {
     return this.agent.runOnce();
   }
@@ -63,6 +65,7 @@ export class AgentController {
   @ApiOperation({ summary: 'One-time: provision the developer-controlled SDK wallet on Arc' })
   @ApiResponse({ status: 201, description: 'walletId and address — save walletId as CIRCLE_WALLET_ID in backend/.env' })
   @Post('wallet/provision')
+  @UseGuards(OperatorGuard)
   provisionWallet() {
     return this.wallets.createWallet();
   }
@@ -79,6 +82,7 @@ export class AgentController {
   })
   @ApiResponse({ status: 201, description: 'ok: true, agentId, uri, txHash' })
   @Post('metadata')
+  @UseGuards(OperatorGuard)
   async updateMetadata(@Body() body: { uri: string }) {
     const txHash = await this.erc8004.updateMetadata(body.uri);
     return { ok: true, agentId: this.erc8004.getAgentId()?.toString(), uri: body.uri, txHash };

@@ -2,6 +2,7 @@ import { DynamicModule, Global, Logger, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { StoredKey, StoredKeySchema } from './schemas/stored-key.schema';
 import { AgentPick, AgentPickSchema } from './schemas/agent-pick.schema';
+import { UsedPayment, UsedPaymentSchema } from './schemas/used-payment.schema';
 
 /**
  * Optional persistence. When MONGODB_URI is set, registers the schemas and exports the models
@@ -19,6 +20,7 @@ export class DatabaseModule {
     const features = MongooseModule.forFeature([
       { name: StoredKey.name, schema: StoredKeySchema },
       { name: AgentPick.name, schema: AgentPickSchema },
+      { name: UsedPayment.name, schema: UsedPaymentSchema },
     ]);
     return {
       module: DatabaseModule,

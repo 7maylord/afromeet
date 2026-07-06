@@ -10,6 +10,7 @@ import {
   ERC20_ABI,
   FRACTIONAL_VAULT_ABI,
   FRACTIONAL_VAULT_FACTORY_ABI,
+  MARKETPLACE_ABI,
   SPLIT_RESOLVER_ABI,
 } from '../config/contracts';
 
@@ -211,6 +212,50 @@ export class BlockchainService implements OnModuleInit {
     return { totalAmount: total, count };
   }
 
+  /** USDC royalties actually received by this creator from secondary marketplace sales. */
+  async getSecondaryRoyalties(creator: string): Promise<bigint> {
+    const marketplace = this.config.get<string>('contracts.marketplace');
+    const usdc = this.config.get<string>('contracts.usdc');
+    const nft = this.config.get<string>('contracts.afroMeetNft');
+    const tokenIds = await this.getCreatorTokenIds(creator);
+    if (!marketplace || !usdc || !nft || tokenIds.length === 0) return 0n;
+
+    const marketIface = new ethers.Interface(MARKETPLACE_ABI);
+    const nftIface = new ethers.Interface(AFROMEET_NFT_ABI);
+    const transferTopic = ethers.id('Transfer(address,address,uint256)');
+    const bought = await this.syncLogs(
+      `bought:${marketplace}`,
+      marketplace,
+      [marketIface.getEvent('Bought')!.topicHash],
+    );
+    const wanted = new Set(tokenIds.map(BigInt));
+    const recipient = creator.toLowerCase();
+    let total = 0n;
+
+    for (const log of bought) {
+      const sale = marketIface.parseLog(log);
+      if (!sale || !wanted.has(sale.args.tokenId as bigint)) continue;
+      const receipt = await this.provider.getTransactionReceipt(log.transactionHash);
+      if (!receipt) continue;
+      const nftTransfer = receipt.logs.find(
+        (entry) => entry.address.toLowerCase() === nft.toLowerCase() && entry.topics[0] === transferTopic,
+      );
+      if (!nftTransfer) continue;
+      const seller = (nftIface.parseLog(nftTransfer)?.args.from as string).toLowerCase();
+      if (seller === recipient) continue;
+
+      for (const entry of receipt.logs) {
+        if (
+          entry.address.toLowerCase() === usdc.toLowerCase() &&
+          entry.topics[0] === transferTopic &&
+          entry.topics.length >= 3 &&
+          `0x${entry.topics[2].slice(26)}`.toLowerCase() === recipient
+        ) total += BigInt(entry.data);
+      }
+    }
+    return total;
+  }
+
   /** Recent access-settlement payments to a creator's works — newest first, with block timestamps. */
   async getPayments(creator: string, limit = 12): Promise<PaymentEvent[]> {
     const escrowAddr = this.config.get<string>('contracts.accessEscrow');
@@ -324,14 +369,15 @@ export class BlockchainService implements OnModuleInit {
 
   async getSaleInfo(
     vaultAddress: string,
-  ): Promise<{ pricePerShare: bigint; sharesForSale: bigint; totalShares: bigint }> {
+  ): Promise<{ curator: string; pricePerShare: bigint; sharesForSale: bigint; totalShares: bigint }> {
     const vault = new ethers.Contract(vaultAddress, FRACTIONAL_VAULT_ABI, this.provider);
-    const [pricePerShare, sharesForSale, totalShares] = await Promise.all([
+    const [curator, pricePerShare, sharesForSale, totalShares] = await Promise.all([
+      vault.curator(),
       vault.saleSharePrice(),
       vault.sharesForSale(),
       vault.totalSupply(),
     ]);
-    return { pricePerShare, sharesForSale, totalShares };
+    return { curator, pricePerShare, sharesForSale, totalShares };
   }
 
   async getSession(
@@ -352,6 +398,10 @@ export class BlockchainService implements OnModuleInit {
 
   async usdcBalanceOf(address: string): Promise<bigint> {
     return this.usdc.balanceOf(address);
+  }
+
+  async usdcAllowance(owner: string, spender: string): Promise<bigint> {
+    return this.usdc.allowance(owner, spender);
   }
 
   // --- Calldata encoders (executed via Circle wallets) ----------------------

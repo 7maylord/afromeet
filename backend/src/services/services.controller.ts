@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ServicesService } from './services.service';
+import { OperatorGuard } from '../config/operator.guard';
 
 @ApiTags('services')
 @Controller('services')
@@ -39,6 +40,7 @@ export class ServicesController {
   })
   @ApiResponse({ status: 201, description: 'Service response after payment settled, plus txHash of the x402 payment' })
   @Post('pay')
+  @UseGuards(OperatorGuard)
   pay(@Body() body: { url: string; data?: unknown; method?: string }) {
     return this.services.pay(body.url, body.data, body.method);
   }

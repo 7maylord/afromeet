@@ -12,8 +12,6 @@ import {
   BookOpen,
   Image as ImageIcon,
   Lock,
-  Unlock,
-  Coins,
   Layers,
 } from 'lucide-react';
 
@@ -32,6 +30,7 @@ interface WorkItem {
   vault: string | null;
   totalShares: number;
 }
+type CatalogueWork = Record<string, string | number | null>;
 
 export default function CataloguePage() {
   const { authenticated, ready } = usePrivy();
@@ -52,17 +51,17 @@ export default function CataloguePage() {
         const cat = await fetch(`${BACKEND_URL}/access/catalogue`).then((r) => r.json());
         if (cancelled) return;
         if (Array.isArray(cat)) {
-          const mapped: WorkItem[] = cat.map((w: any) => ({
+          const mapped: WorkItem[] = (cat as CatalogueWork[]).map((w) => ({
             id: String(w.id),
-            title: w.title || `Work #${w.id}`,
+            title: String(w.title || `Work #${w.id}`),
             creator: String(w.creator),
-            category: w.category || (w.mode === 'TIMED' ? 'music' : 'art'),
+            category: String(w.category || (w.mode === 'TIMED' ? 'music' : 'art')),
             price: Number(w.pricePerAccessUsdc || 0),
             discoveryPrice: Number(w.discoveryPriceUsdc || 0),
             ratePerSecondUsdc: Number(w.ratePerSecondUsdc || 0),
             mode: w.mode as 'TIMED' | 'DISCRETE',
             minAccessSeconds: Number(w.minAccessSeconds || 0),
-            vault: w.vault || null,
+            vault: w.vault ? String(w.vault) : null,
             totalShares: Number(w.totalShares || 0),
           }));
           setWorks(mapped);

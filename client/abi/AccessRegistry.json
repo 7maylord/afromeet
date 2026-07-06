@@ -1,243 +1,243 @@
 [
   {
-    "type": "constructor",
     "inputs": [
       {
+        "internalType": "contract IAfroMeetNFT",
         "name": "nft_",
-        "type": "address",
-        "internalType": "contract IAfroMeetNFT"
+        "type": "address"
       }
     ],
-    "stateMutability": "nonpayable"
+    "stateMutability": "nonpayable",
+    "type": "constructor"
   },
   {
-    "type": "function",
-    "name": "configs",
+    "anonymous": false,
     "inputs": [
       {
+        "indexed": true,
+        "internalType": "uint256",
         "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
+        "type": "uint256"
+      },
       {
+        "indexed": false,
+        "internalType": "uint256",
         "name": "pricePerAccess",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       },
       {
+        "indexed": false,
+        "internalType": "uint256",
         "name": "discoveryPrice",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       },
       {
-        "name": "ratePerSecond",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
+        "indexed": false,
+        "internalType": "enum AccessRegistry.AccessMode",
         "name": "mode",
-        "type": "uint8",
-        "internalType": "enum AccessRegistry.AccessMode"
-      },
-      {
-        "name": "minAccessSeconds",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "daoTreasury",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "active",
-        "type": "bool",
-        "internalType": "bool"
+        "type": "uint8"
       }
     ],
-    "stateMutability": "view"
+    "name": "ConfigSet",
+    "type": "event"
   },
   {
-    "type": "function",
-    "name": "getConfig",
     "inputs": [
       {
+        "internalType": "uint256",
         "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       }
     ],
+    "name": "configs",
     "outputs": [
       {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct AccessRegistry.AccessConfig",
+        "internalType": "uint256",
+        "name": "pricePerAccess",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "discoveryPrice",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "ratePerSecond",
+        "type": "uint256"
+      },
+      {
+        "internalType": "enum AccessRegistry.AccessMode",
+        "name": "mode",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint256",
+        "name": "minAccessSeconds",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "daoTreasury",
+        "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "active",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getConfig",
+    "outputs": [
+      {
         "components": [
           {
+            "internalType": "uint256",
             "name": "pricePerAccess",
-            "type": "uint256",
-            "internalType": "uint256"
+            "type": "uint256"
           },
           {
+            "internalType": "uint256",
             "name": "discoveryPrice",
-            "type": "uint256",
-            "internalType": "uint256"
+            "type": "uint256"
           },
           {
+            "internalType": "uint256",
             "name": "ratePerSecond",
-            "type": "uint256",
-            "internalType": "uint256"
+            "type": "uint256"
           },
           {
+            "internalType": "enum AccessRegistry.AccessMode",
             "name": "mode",
-            "type": "uint8",
-            "internalType": "enum AccessRegistry.AccessMode"
+            "type": "uint8"
           },
           {
+            "internalType": "uint256",
             "name": "minAccessSeconds",
-            "type": "uint256",
-            "internalType": "uint256"
+            "type": "uint256"
           },
           {
+            "internalType": "address",
             "name": "daoTreasury",
-            "type": "address",
-            "internalType": "address"
+            "type": "address"
           },
           {
+            "internalType": "bool",
             "name": "active",
-            "type": "bool",
-            "internalType": "bool"
+            "type": "bool"
           }
-        ]
+        ],
+        "internalType": "struct AccessRegistry.AccessConfig",
+        "name": "",
+        "type": "tuple"
       }
     ],
-    "stateMutability": "view"
+    "stateMutability": "view",
+    "type": "function"
   },
   {
-    "type": "function",
-    "name": "nft",
     "inputs": [],
+    "name": "nft",
     "outputs": [
       {
+        "internalType": "contract IAfroMeetNFT",
         "name": "",
-        "type": "address",
-        "internalType": "contract IAfroMeetNFT"
+        "type": "address"
       }
     ],
-    "stateMutability": "view"
+    "stateMutability": "view",
+    "type": "function"
   },
   {
-    "type": "function",
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "pricePerAccess",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "discoveryPrice",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "ratePerSecond",
+        "type": "uint256"
+      },
+      {
+        "internalType": "enum AccessRegistry.AccessMode",
+        "name": "mode",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint256",
+        "name": "minAccessSeconds",
+        "type": "uint256"
+      }
+    ],
     "name": "setConfig",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "pricePerAccess",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "discoveryPrice",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "ratePerSecond",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "mode",
-        "type": "uint8",
-        "internalType": "enum AccessRegistry.AccessMode"
-      },
-      {
-        "name": "minAccessSeconds",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
     "outputs": [],
-    "stateMutability": "nonpayable"
+    "stateMutability": "nonpayable",
+    "type": "function"
   },
   {
-    "type": "function",
-    "name": "setConfigFrom",
     "inputs": [
       {
+        "internalType": "uint256",
         "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       },
       {
+        "internalType": "address",
         "name": "creator",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       },
       {
+        "internalType": "uint256",
         "name": "pricePerAccess",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       },
       {
+        "internalType": "uint256",
         "name": "discoveryPrice",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       },
       {
+        "internalType": "uint256",
         "name": "ratePerSecond",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       },
       {
+        "internalType": "enum AccessRegistry.AccessMode",
         "name": "mode",
-        "type": "uint8",
-        "internalType": "enum AccessRegistry.AccessMode"
+        "type": "uint8"
       },
       {
+        "internalType": "uint256",
         "name": "minAccessSeconds",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       }
     ],
+    "name": "setConfigFrom",
     "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "event",
-    "name": "ConfigSet",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "pricePerAccess",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "discoveryPrice",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "mode",
-        "type": "uint8",
-        "indexed": false,
-        "internalType": "enum AccessRegistry.AccessMode"
-      }
-    ],
-    "anonymous": false
+    "stateMutability": "nonpayable",
+    "type": "function"
   }
 ]

@@ -48,7 +48,7 @@ export class WorksController {
   })
   @ApiResponse({ status: 201, description: 'ok: true — decryption key is now bound to the token' })
   @Post(':tokenId/link')
-  link(@Param('tokenId') tokenId: string, @Body() body: { uploadId: string }) {
-    return this.works.link(body.uploadId, tokenId);
+  link(@Param('tokenId') tokenId: string, @Body() body: { uploadId: string; signature: string }) {
+    return this.works.link(body.uploadId, tokenId, body.signature);
   }
 }

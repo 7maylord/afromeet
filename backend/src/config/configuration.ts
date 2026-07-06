@@ -1,5 +1,7 @@
 export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
+  operatorApiKey: process.env.OPERATOR_API_KEY,
+  corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:3001,https://afromeet.vercel.app').split(','),
 
   arc: {
     rpcUrl: process.env.ARC_RPC_URL,

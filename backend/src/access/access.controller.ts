@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AccessService } from './access.service';
 import { NanopaymentGuard } from './nanopayment.guard';
+import { OperatorGuard } from '../config/operator.guard';
 
 @ApiTags('access')
 @Controller('access')
@@ -38,8 +39,8 @@ export class AccessController {
   })
   @ApiResponse({ status: 201, description: 'Session opened — returns sessionId and expiry' })
   @Post('session/open')
-  openSession(@Body() body: { tokenId: string; listener: string; authorisedUsdc?: number }) {
-    return this.access.openSession(body.tokenId, body.listener, body.authorisedUsdc);
+  openSession(@Body() body: { tokenId: string; listener: string; signature: string; nonce: string; timestamp: number; authorisedUsdc?: number }) {
+    return this.access.openSession(body.tokenId, body.listener, body.signature, body.nonce, body.timestamp, body.authorisedUsdc);
   }
 
   @ApiOperation({ summary: 'Live accrued cost after N seconds of playback (the ticking meter)' })
@@ -73,6 +74,7 @@ export class AccessController {
   })
   @ApiResponse({ status: 201, description: 'Settlement tx hash + USDC amount settled' })
   @Post('session/settle')
+  @UseGuards(OperatorGuard)
   settle(@Body() body: { sessionId: string; elapsedSeconds?: number }) {
     return this.access.settle(body.sessionId, body.elapsedSeconds ?? 0);
   }

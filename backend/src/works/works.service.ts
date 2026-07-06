@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createCipheriv, randomBytes, randomUUID } from 'node:crypto';
 import { MediaVaultService } from '../media-vault/media-vault.service';
+import { BlockchainService } from '../blockchain/blockchain.service';
+import { ethers } from 'ethers';
 
 interface UploadedFile {
   buffer: Buffer;
@@ -17,8 +19,9 @@ interface UploadedFile {
 @Injectable()
 export class WorksService {
   constructor(
-    private readonly config: ConfigService,
     private readonly vault: MediaVaultService,
+    private readonly blockchain: BlockchainService,
+    private readonly config: ConfigService,
   ) {}
 
   private jwt(): string {
@@ -90,7 +93,12 @@ export class WorksService {
   }
 
   /** After mint, bind the stashed key to the real tokenId. */
-  async link(uploadId: string, tokenId: string): Promise<{ cipherCid: string }> {
+  async link(uploadId: string, tokenId: string, signature: string): Promise<{ cipherCid: string }> {
+    const creator = await this.blockchain.getCreator(tokenId);
+    const signer = ethers.verifyMessage(`AfroMeet link ${tokenId} ${uploadId}`, signature);
+    if (signer.toLowerCase() !== creator.toLowerCase()) {
+      throw new BadRequestException('link signature is not from the work creator');
+    }
     return { cipherCid: await this.vault.link(uploadId, tokenId) };
   }
 }

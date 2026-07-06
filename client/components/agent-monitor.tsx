@@ -1,15 +1,11 @@
 'use client';
 
-import { usePrivy } from '@privy-io/react-auth';
 import { useState, useEffect, useRef } from 'react';
 import { 
   Cpu, 
-  Play, 
   Terminal, 
   Coins, 
   Activity,
-  CheckCircle,
-  Loader2,
   RefreshCw
 } from 'lucide-react';
 
@@ -30,15 +26,12 @@ const IDLE_LOG: LogLine[] = [
 ];
 
 export default function AgentMonitor() {
-  const { authenticated } = usePrivy();
-
-  const [logs, setLogs] = useState<LogLine[]>(IDLE_LOG);
+  const [logs] = useState<LogLine[]>(IDLE_LOG);
   const [agentAddress, setAgentAddress] = useState<string>(process.env.NEXT_PUBLIC_AGENT_ADDRESS ?? '');
   const [ready, setReady] = useState<boolean>(false);
   const [agentId, setAgentId] = useState<string>('—');
   const [balance, setBalance] = useState<string>('0.00');
 
-  const [running, setRunning] = useState<boolean>(false);
   const [loadingStats, setLoadingStats] = useState<boolean>(false);
 
   const consoleBottomRef = useRef<HTMLDivElement | null>(null);
@@ -64,45 +57,6 @@ export default function AgentMonitor() {
     const interval = setInterval(fetchAgentStats, 20000);
     return () => clearInterval(interval);
   }, []);
-
-  const triggerAgentRun = async () => {
-    setRunning(true);
-    const newLog = (text: string, type: 'info' | 'success' | 'warn' = 'info'): LogLine => ({
-      timestamp: new Date().toTimeString().split(' ')[0],
-      text,
-      type
-    });
-
-    setLogs(prev => [...prev, newLog('Manual run triggered — Euterpe is deciding…', 'warn')]);
-
-    try {
-      const s = await fetch(`${BACKEND_URL}/agent/run`, { method: 'POST' }).then(r => r.json());
-
-      const lines: LogLine[] = [
-        newLog(`Scanned catalogue · sampled ${s.sampled ?? 0} work(s) on a $${s.budgetUsdc ?? 0} budget.`, 'info'),
-      ];
-      for (const b of s.backed ?? []) {
-        lines.push(newLog(`Backed work #${b.tokenId}: $${b.allocationUsdc} → ${b.shares} shares. ${b.reason ?? ''}`.trim(), 'success'));
-      }
-      for (const l of s.liked ?? []) {
-        if (!(s.backed ?? []).some((b: { tokenId: string }) => b.tokenId === l.tokenId)) {
-          lines.push(newLog(`Liked work #${l.tokenId} (score ${Math.round((l.score ?? 0) * 100)}%) — ${l.note ?? ''}`.trim(), 'info'));
-        }
-      }
-      for (const skip of s.skipped ?? []) {
-        lines.push(newLog(`Skipped: ${skip}`, 'warn'));
-      }
-      lines.push(newLog('Pass complete.', 'success'));
-
-      setLogs(prev => [...prev, ...lines]);
-      fetchAgentStats();
-    } catch {
-      setLogs(prev => [...prev, newLog('Run failed — backend unreachable.', 'warn')]);
-    } finally {
-      setRunning(false);
-      setTimeout(() => consoleBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -141,7 +95,7 @@ export default function AgentMonitor() {
               ready ? 'bg-emerald-950 text-emerald-400 border border-emerald-900/60' : 'bg-zinc-800 text-zinc-400'
             }`}>
               <span className={`h-1.5 w-1.5 rounded-full ${ready ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`}></span>
-              {running ? 'Running pass...' : 'Idle / Monitoring'}
+              Idle / Monitoring
             </span>
           </div>
           <Activity className="w-8 h-8 text-emerald-400 opacity-80" />
@@ -164,18 +118,6 @@ export default function AgentMonitor() {
               className="p-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 hover:text-white text-zinc-500 rounded-full transition-all"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingStats ? 'animate-spin' : ''}`} />
-            </button>
-            <button
-              onClick={triggerAgentRun}
-              disabled={running}
-              className="bg-kente-gold hover:bg-kente-gold-light text-zinc-950 font-bold px-4 py-1.5 rounded-full text-xs flex items-center gap-1.5 transition-all shadow-md disabled:opacity-50"
-            >
-              {running ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Play className="w-3.5 h-3.5 fill-current" />
-              )}
-              Trigger Pass
             </button>
           </div>
         </div>

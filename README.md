@@ -34,8 +34,7 @@ afromeet/
 ├── backend/            NestJS API — Circle wallets, x402, access settlement, Euterpe (Patron Agent)
 │                       Swagger docs at /docs when running
 ├── client/             Next.js 16 frontend — landing + authenticated workspace
-├── agent-card.json     ERC-8004 agent metadata (Euterpe, agent id 839408)
-└── AfroMeet_PRD_TRD.md Full product + technical reference
+└── agent-card.json     ERC-8004 agent metadata (Euterpe, agent id 839408)
 ```
 
 See [contracts/README.md](contracts/README.md) and [backend/README.md](backend/README.md) for setup.
@@ -46,15 +45,15 @@ See [contracts/README.md](contracts/README.md) and [backend/README.md](backend/R
 
 | Contract                | Address                                      |
 | ----------------------- | -------------------------------------------- |
-| AfroMeetNFT             | `0x770eb5208ea21995e5afad1ad50f23300a66e73a` |
-| AccessRegistry          | `0x4f2b0BcE212690b4d0ea92ed528CEBF00F62A8Cd` |
-| AccessEscrow            | `0x668C60E379209a79803bBe033ea8D0Ae593087b0` |
-| SplitResolver           | `0x24da8b01d81b925eb15aa13a539958cc5d602c70` |
-| AfroMeetRoyalty         | `0xb6057af5923697ba3cfb558e2d6fcc2628cccd9c` |
-| AfroMeetMarketplace     | `0xEa54d613646D5032bd0C9EA19e35c0DB23fca27a` |
-| FractionalVaultFactory  | `0x5412F0D7Fea412E0c586EcebAdF4833C0aab5E76` |
-| CreatorDAOFactory       | `0x7a436f6d23170509672652986cfd683e92ddcfd1` |
-| USDC (Arc system token) | `0x3600000000000000000000000000000000000000` |
+| AfroMeetNFT             | [`0xb2ffb8d43b20dd6086f0909f90565f658c14c2c4`](https://testnet.arcscan.app/address/0xb2ffb8d43b20dd6086f0909f90565f658c14c2c4) |
+| AccessRegistry          | [`0x89661826e41b548098ab73d0957f8d7c843d0505`](https://testnet.arcscan.app/address/0x89661826e41b548098ab73d0957f8d7c843d0505) |
+| AccessEscrow            | [`0x758b2dd0e09ec736aafdfdeee26e87f4b1c4315a`](https://testnet.arcscan.app/address/0x758b2dd0e09ec736aafdfdeee26e87f4b1c4315a) |
+| SplitResolver           | [`0x862d28cd9e40ea461a0be2b3f1150d0c91f7de34`](https://testnet.arcscan.app/address/0x862d28cd9e40ea461a0be2b3f1150d0c91f7de34) |
+| AfroMeetRoyalty         | [`0xb182db5655b7884df727ae0b7295949182ddeae7`](https://testnet.arcscan.app/address/0xb182db5655b7884df727ae0b7295949182ddeae7) |
+| AfroMeetMarketplace     | [`0x34b84deffe4a69b1ef87805a38c867a9c4b3e4f2`](https://testnet.arcscan.app/address/0x34b84deffe4a69b1ef87805a38c867a9c4b3e4f2) |
+| FractionalVaultFactory  | [`0x41a1b2ea32e3906e91d27aee180a36cb5a677140`](https://testnet.arcscan.app/address/0x41a1b2ea32e3906e91d27aee180a36cb5a677140) |
+| CreatorDAOFactory       | [`0x325538df752aeda5e0df887061f36be152b0d0d0`](https://testnet.arcscan.app/address/0x325538df752aeda5e0df887061f36be152b0d0d0) |
+| USDC (Arc system token) | [`0x3600000000000000000000000000000000000000`](https://testnet.arcscan.app/address/0x3600000000000000000000000000000000000000) |
 
 All eight are verified on [ArcScan](https://testnet.arcscan.app).
 

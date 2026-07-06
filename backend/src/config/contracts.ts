@@ -19,6 +19,11 @@ export const AFROMEET_NFT_ABI = [
   'function treasuryOf(address creator) view returns (address)',
   'function ecosystemOf(address creator) view returns (tuple(address token, address dao, address treasury, bool exists))',
   'function mintWork(string uri) returns (uint256)',
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
+];
+
+export const MARKETPLACE_ABI = [
+  'event Bought(uint256 indexed tokenId, address indexed buyer, uint256 price)',
 ];
 
 export const CREATOR_DAO_ABI = [
@@ -60,6 +65,7 @@ export const FRACTIONAL_VAULT_FACTORY_ABI = [
 ];
 
 export const FRACTIONAL_VAULT_ABI = [
+  'function curator() view returns (address)',
   'function withdrawableRevenueOf(address holder) view returns (uint256)',
   'function claimRevenue() returns (uint256)',
   'function redeem()',

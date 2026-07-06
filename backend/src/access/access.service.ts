@@ -9,6 +9,7 @@ import { MediaVaultService } from '../media-vault/media-vault.service';
 export class AccessService {
   /** Resolved work metadata, cached by tokenURI (IPFS CIDs are immutable). */
   private readonly metaCache = new Map<string, { title: string | null; category: string | null }>();
+  private readonly usedSessionProofs = new Set<string>();
 
   constructor(
     private readonly blockchain: BlockchainService,
@@ -60,11 +61,13 @@ export class AccessService {
         let sharePriceRaw = '0';
         let sharesForSale = 0;
         let totalShares = 0;
+        let curator: string | null = null;
         try {
           const v = await this.blockchain.getVaultOf(nftAddr, id);
           if (v && v !== ethers.ZeroAddress) {
             vault = v;
             const info = await this.blockchain.getSaleInfo(v);
+            curator = info.curator;
             sharePriceRaw = info.pricePerShare.toString();
             sharesForSale = Number(info.sharesForSale);
             totalShares = Number(info.totalShares);
@@ -88,6 +91,7 @@ export class AccessService {
           sharePriceRaw,
           sharesForSale,
           totalShares,
+          curator,
         });
       } catch {
         /* skip unreadable token */
@@ -145,6 +149,13 @@ export class AccessService {
     if (s.listener === ethers.ZeroAddress || s.settled) {
       throw new ForbiddenException('no open session for this content');
     }
+    const cfg = await this.blockchain.getAccessConfig(s.tokenId);
+    const calldata = this.blockchain.encodeSettle(
+      sessionId,
+      cfg.mode === 0 ? Number(cfg.minAccessSeconds) : 0,
+    );
+    const txId = await this.wallets.sendContractCall(this.escrowAddress(), calldata);
+    await this.wallets.waitForTransaction(txId);
     return this.releaseContent(s.tokenId.toString());
   }
 
@@ -168,13 +179,34 @@ export class AccessService {
   }
 
   /** Operator opens a metered session against a listener's pre-authorised USDC. */
-  async openSession(tokenId: string, listener: string, authorisedUsdc?: number) {
+  async openSession(tokenId: string, listener: string, signature: string, nonce: string, timestamp: number, authorisedUsdc?: number) {
     const escrow = this.escrowAddress();
+    if (!ethers.isAddress(listener) || !nonce || Math.abs(Date.now() - timestamp) > 300_000 || this.usedSessionProofs.has(nonce)) {
+      throw new BadRequestException('invalid or reused session proof');
+    }
+    const recovered = ethers.verifyMessage(
+      `AfroMeet session ${tokenId} ${listener.toLowerCase()} ${nonce} ${timestamp}`,
+      signature,
+    );
+    if (recovered.toLowerCase() !== listener.toLowerCase()) {
+      throw new ForbiddenException('session signature does not match listener');
+    }
+    this.usedSessionProofs.add(nonce);
+    const cfg = await this.blockchain.getAccessConfig(tokenId);
     let authorised: bigint;
     if (authorisedUsdc !== undefined) {
       authorised = BigInt(Math.floor(authorisedUsdc * 1e6));
     } else {
-      authorised = (await this.blockchain.getAccessConfig(tokenId)).pricePerAccess;
+      authorised = cfg.pricePerAccess;
+    }
+    const minimum = cfg.mode === 0 ? cfg.ratePerSecond * cfg.minAccessSeconds : cfg.pricePerAccess;
+    if (authorised < minimum) throw new BadRequestException('authorised amount is below minimum access cost');
+    const [allowance, balance] = await Promise.all([
+      this.blockchain.usdcAllowance(listener, escrow),
+      this.blockchain.usdcBalanceOf(listener),
+    ]);
+    if (allowance < minimum || balance < minimum) {
+      throw new BadRequestException('insufficient USDC allowance or balance');
     }
 
     const sessionId = ethers.hexlify(ethers.randomBytes(32));

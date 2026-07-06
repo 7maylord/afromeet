@@ -11,7 +11,6 @@ import {
   Trash2,
   CheckCircle,
   HelpCircle,
-  Percent
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
@@ -174,11 +173,13 @@ export default function MintForm() {
       if (tokenId === undefined) throw new Error('Could not read minted tokenId');
 
       // Bind the encrypted upload's key to the freshly-minted tokenId (gated media).
-      await fetch(`${BACKEND_URL}/works/${tokenId}/link`, {
+      const signature = await signer.signMessage(`AfroMeet link ${tokenId} ${up.uploadId}`);
+      const linkRes = await fetch(`${BACKEND_URL}/works/${tokenId}/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uploadId: up.uploadId }),
-      }).catch(() => undefined);
+        body: JSON.stringify({ uploadId: up.uploadId, signature }),
+      });
+      if (!linkRes.ok) throw new Error('NFT minted, but secure media linking failed');
 
       toast.success(
         <div className="flex flex-col gap-1.5">

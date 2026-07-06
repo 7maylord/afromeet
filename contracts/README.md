@@ -44,11 +44,11 @@ The script deploys in dependency order, wires `SplitResolver`'s escrow, and prin
 
 | Contract               | Address                                      |
 | ---------------------- | -------------------------------------------- |
-| AfroMeetNFT            | `0x9A8c6Df48613265Ea2b90f1e4Dd85eC3Ca9A85DE` |
-| CreatorDAOFactory      | `0x8aEE6C72598200E1720300607D6d20812Ec9bc61` |
-| AccessRegistry         | `0x5363eACF9b04CAfcD1DDb0dc5365532644A1B46A` |
-| AccessEscrow           | `0xB14a5927b20927A8812AC060c00CBE17772CcFA0` |
-| SplitResolver          | `0x4cdd345EEFbfFE00F004C64Fe72da6EC667f8852` |
-| AfroMeetRoyalty        | `0x3D1A6E616CA3bc7fAb7cc178aF434071ddeAbC4f` |
-| AfroMeetMarketplace    | `0x892C2C0eD81f80Ba727af29c7A128A4A2e9d053c` |
-| FractionalVaultFactory | `0xe41e15b91Ae30f3cB4f0193c4ca1f00c82342D8f` |
+| AfroMeetNFT            | `0xb2ffb8d43b20dd6086f0909f90565f658c14c2c4` |
+| CreatorDAOFactory      | `0x325538df752aeda5e0df887061f36be152b0d0d0` |
+| AccessRegistry         | `0x89661826e41b548098ab73d0957f8d7c843d0505` |
+| AccessEscrow           | `0x758b2dd0e09ec736aafdfdeee26e87f4b1c4315a` |
+| SplitResolver          | `0x862d28cd9e40ea461a0be2b3f1150d0c91f7de34` |
+| AfroMeetRoyalty        | `0xb182db5655b7884df727ae0b7295949182ddeae7` |
+| AfroMeetMarketplace    | `0x34b84deffe4a69b1ef87805a38c867a9c4b3e4f2` |
+| FractionalVaultFactory | `0x41a1b2ea32e3906e91d27aee180a36cb5a677140` |
