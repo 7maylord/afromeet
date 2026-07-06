@@ -4,7 +4,7 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { toast } from 'sonner';
-import { getArcSigner, ensureAllowance } from '@/lib/wallet';
+import { getArcSigner, ensureAllowance, ensureSelfDelegated } from '@/lib/wallet';
 import {
   Building2,
   Plus,
@@ -165,6 +165,8 @@ export default function DaoPanel() {
       if (!to || !data) throw new Error('No DAO found for this creator');
 
       const signer = await getArcSigner(wallets[0]);
+      // Holding VIBE isn't enough to vote — it must be delegated (usually to yourself) first.
+      if (tokenAddress) await ensureSelfDelegated(signer, tokenAddress);
       const tx = await signer.sendTransaction({ to, data });
       setStatusMsg({ type: 'info', text: 'Vote transaction broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
@@ -212,8 +214,7 @@ export default function DaoPanel() {
       // Delegate the new VIBE to the buyer so it registers as voting power.
       if (tokenAddress) {
         setStatusMsg({ type: 'info', text: 'Activating voting power…' });
-        const token = new ethers.Contract(tokenAddress, ['function delegate(address)'], signer);
-        await (await token.delegate(await signer.getAddress())).wait();
+        await ensureSelfDelegated(signer, tokenAddress);
       }
 
       setStatusMsg({ type: 'success', text: `Bought ${amount} VIBE — voting power active, proceeds sent to the treasury.`, txHash: tx.hash });
@@ -246,6 +247,8 @@ export default function DaoPanel() {
       if (!to || !data) throw new Error('No DAO found — mint a work first to create your ecosystem');
 
       const signer = await getArcSigner(wallets[0]);
+      // Holding VIBE isn't enough to propose — it must be delegated (usually to yourself) first.
+      if (tokenAddress) await ensureSelfDelegated(signer, tokenAddress);
       const tx = await signer.sendTransaction({ to, data });
       setStatusMsg({ type: 'info', text: 'Proposal deployment broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();

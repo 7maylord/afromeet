@@ -74,3 +74,22 @@ export async function ensureAllowance(
   const tx = await erc20.approve(spender, ethers.MaxUint256);
   await tx.wait();
 }
+
+/**
+ * ERC20Votes tokens (VIBE) only count a holder's balance as voting/proposing power once they've
+ * delegated — merely holding the token isn't enough. Most holders never realise this and hit a
+ * confusing "insufficient votes" revert despite a healthy balance. Delegate to self once, only if
+ * never delegated before (a holder who deliberately delegated elsewhere is left alone).
+ */
+export async function ensureSelfDelegated(signer: ethers.Signer, token: string): Promise<void> {
+  const owner = await signer.getAddress();
+  const votes = new ethers.Contract(
+    token,
+    ['function delegates(address) view returns (address)', 'function delegate(address)'],
+    signer,
+  );
+  const current = (await votes.delegates(owner)) as string;
+  if (current !== ethers.ZeroAddress) return; // already delegated (to self or elsewhere) — leave it
+  const tx = await votes.delegate(owner);
+  await tx.wait();
+}
