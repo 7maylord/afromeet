@@ -43,8 +43,8 @@ See [contracts/README.md](contracts/README.md) and [backend/README.md](backend/R
 
 ## Deployed — Arc Testnet (chain `5042002`)
 
-| Contract                | Address                                      |
-| ----------------------- | -------------------------------------------- |
+| Contract                | Address                                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | AfroMeetNFT             | [`0xb2ffb8d43b20dd6086f0909f90565f658c14c2c4`](https://testnet.arcscan.app/address/0xb2ffb8d43b20dd6086f0909f90565f658c14c2c4) |
 | AccessRegistry          | [`0x89661826e41b548098ab73d0957f8d7c843d0505`](https://testnet.arcscan.app/address/0x89661826e41b548098ab73d0957f8d7c843d0505) |
 | AccessEscrow            | [`0x758b2dd0e09ec736aafdfdeee26e87f4b1c4315a`](https://testnet.arcscan.app/address/0x758b2dd0e09ec736aafdfdeee26e87f4b1c4315a) |

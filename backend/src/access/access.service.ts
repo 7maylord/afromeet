@@ -142,7 +142,11 @@ export class AccessService {
 
   /**
    * Holder/streaming path: releases the key for a work given a valid open (unsettled) session.
-   * No double-charge — the per-second settle is the payment; opening the session is the entitlement.
+   *
+   * DISCRETE works (flat one-time price, no metering) settle immediately, before release — pay
+   * then view. TIMED works release the key unsettled and are billed later via `settle()` for the
+   * real elapsed listening time (see the /access/session/settle endpoint, called on stop); the
+   * contract's minAccessSeconds skip-gate makes anything below that threshold a free preview.
    */
   async sessionContent(sessionId: string) {
     const s = await this.blockchain.getSession(sessionId);
@@ -150,12 +154,12 @@ export class AccessService {
       throw new ForbiddenException('no open session for this content');
     }
     const cfg = await this.blockchain.getAccessConfig(s.tokenId);
-    const calldata = this.blockchain.encodeSettle(
-      sessionId,
-      cfg.mode === 0 ? Number(cfg.minAccessSeconds) : 0,
-    );
-    const txId = await this.wallets.sendContractCall(this.escrowAddress(), calldata);
-    await this.wallets.waitForTransaction(txId);
+    if (cfg.mode !== 0) {
+      // DISCRETE: flat price, no elapsed-time concept — settle now, before releasing the key.
+      const calldata = this.blockchain.encodeSettle(sessionId, 0);
+      const txId = await this.wallets.sendContractCall(this.escrowAddress(), calldata);
+      await this.wallets.waitForTransaction(txId);
+    }
     return this.releaseContent(s.tokenId.toString());
   }
 
@@ -227,6 +231,44 @@ export class AccessService {
     const txId = await this.wallets.sendContractCall(escrow, calldata);
     const txHash = await this.wallets.waitForTransaction(txId);
     return { sessionId, elapsedSeconds, txHash };
+  }
+
+  /**
+   * Listener-triggered settlement (e.g. on Stop). `settle()` above is operator-only (internal/ops
+   * use); this is the public path a browser calls directly, so it can't take a shared secret —
+   * instead it requires the same signature proof as `openSession`, and additionally checks the
+   * signer is the actual on-chain listener for this session, so nobody can settle someone else's
+   * session or forge a different listener's payment.
+   */
+  async settleAsListener(
+    sessionId: string,
+    listener: string,
+    signature: string,
+    nonce: string,
+    timestamp: number,
+    elapsedSeconds: number,
+  ) {
+    if (
+      !ethers.isAddress(listener) ||
+      !nonce ||
+      Math.abs(Date.now() - timestamp) > 300_000 ||
+      this.usedSessionProofs.has(nonce)
+    ) {
+      throw new BadRequestException('invalid or reused settlement proof');
+    }
+    const recovered = ethers.verifyMessage(
+      `AfroMeet settle ${sessionId} ${listener.toLowerCase()} ${nonce} ${timestamp}`,
+      signature,
+    );
+    if (recovered.toLowerCase() !== listener.toLowerCase()) {
+      throw new ForbiddenException('settlement signature does not match listener');
+    }
+    const session = await this.blockchain.getSession(sessionId);
+    if (session.listener.toLowerCase() !== listener.toLowerCase()) {
+      throw new ForbiddenException('not the listener for this session');
+    }
+    this.usedSessionProofs.add(nonce);
+    return this.settle(sessionId, elapsedSeconds);
   }
 
   private escrowAddress(): string {

@@ -54,16 +54,19 @@ export default function AfroMeetHeader() {
         </div>
 
         {/* Global Search Bar */}
-        <div className="relative w-full max-w-sm">
+        <form action="/app/catalogue" method="get" className="relative w-full max-w-sm">
           <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-white/40">
             <Search className="h-4 w-4" />
           </span>
           <input
             type="text"
+            name="q"
+            defaultValue={typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('q') ?? ''}
             placeholder="Search creators or works…"
+            aria-label="Search creators or works"
             className="w-full rounded-xl border border-white/8 bg-white/[0.03] py-2 pl-9 pr-4 text-sm text-bone placeholder-white/35 transition-all focus:border-volt/60 focus:outline-none focus:ring-1 focus:ring-volt/40"
           />
-        </div>
+        </form>
 
         {/* User Status */}
         <div className="flex items-center gap-3">

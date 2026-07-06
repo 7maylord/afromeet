@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { ethers } from "ethers";
 import { toast } from "sonner";
-import { getArcSigner } from "@/lib/wallet";
+import { ensureAllowance, getArcSigner } from "@/lib/wallet";
 import {
   Play,
   Pause,
@@ -118,6 +118,50 @@ export default function MediaPlayer() {
   const [approved, setApproved] = useState<boolean>(false); // listener has approved USDC to escrow
   const [approving, setApproving] = useState<boolean>(false);
 
+  // Refs mirror the latest playback state for the unload handler below, which is registered once
+  // and must always read current values without re-subscribing on every per-second tick.
+  const sessionIdRef = useRef<string | null>(null);
+  const currentTimeRef = useRef(0);
+  const selectedWorkRef = useRef<WorkItem | null>(null);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+  useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
+  useEffect(() => { selectedWorkRef.current = selectedWork; }, [selectedWork]);
+
+  // Settlement is listener-authenticated (no operator secret in the browser) — signed once, right
+  // after a session opens, then reused both at Stop and by the unload beacon below (no async wallet
+  // signature is possible during page teardown, so it must already be on hand).
+  const settleProofRef = useRef<{
+    sessionId: string;
+    listener: string;
+    signature: string;
+    nonce: string;
+    timestamp: number;
+  } | null>(null);
+
+  // Best-effort settle if the tab closes mid-session (no explicit Stop click). sendBeacon survives
+  // page unload; this is a safety net only — the real settle-on-stop path is in handlePlayToggle.
+  useEffect(() => {
+    const settleOnLeave = () => {
+      const sid = sessionIdRef.current;
+      const work = selectedWorkRef.current;
+      const elapsed = currentTimeRef.current;
+      const proof = settleProofRef.current;
+      if (sid && proof && work?.mode === "TIMED" && elapsed >= work.minAccessSeconds) {
+        const blob = new Blob(
+          [JSON.stringify({ ...proof, elapsedSeconds: elapsed })],
+          { type: "application/json" },
+        );
+        navigator.sendBeacon(`${BACKEND_URL}/access/session/settle/listener`, blob);
+      }
+    };
+    window.addEventListener("beforeunload", settleOnLeave);
+    window.addEventListener("pagehide", settleOnLeave);
+    return () => {
+      window.removeEventListener("beforeunload", settleOnLeave);
+      window.removeEventListener("pagehide", settleOnLeave);
+    };
+  }, []);
+
   // Listener approves the escrow to pull USDC, so per-second settlement can actually clear.
   const handleApproveUsdc = async () => {
     if (!wallets[0]) {
@@ -204,17 +248,51 @@ export default function MediaPlayer() {
     if (!selectedWork || selectedWork.mode === "DISCRETE") return;
 
     if (isPlaying) {
-      // Stopping the playback
+      // Stopping the playback — settle for the real time listened.
       setIsPlaying(false);
       if (timerRef.current) clearInterval(timerRef.current);
       if (audioRef.current) audioRef.current.pause();
 
-      setStatusMsg({
-        type: "success",
-        text: "Playback stopped — minimum access was settled before the master key was released.",
-      });
+      const elapsed = currentTime;
+      const proof = settleProofRef.current;
+      settleProofRef.current = null;
       setSessionId(null);
       setCurrentTime(0);
+
+      if (!proof) return;
+
+      if (elapsed < selectedWork.minAccessSeconds) {
+        // Within the free preview window — the contract's skip-gate charges nothing.
+        setStatusMsg({
+          type: "info",
+          text: `Stopped within the free ${selectedWork.minAccessSeconds}s preview — nothing charged.`,
+        });
+        return;
+      }
+
+      setLoading(true);
+      setStatusMsg({ type: "info", text: "Settling your listening session on Arc…" });
+      try {
+        const res = await fetch(`${BACKEND_URL}/access/session/settle/listener`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...proof, elapsedSeconds: elapsed }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const result = await res.json();
+        setStatusMsg({
+          type: "success",
+          text: `Settled $${(elapsed * rateUsdc).toFixed(6)} USDC for ${elapsed}s of playback.`,
+          txHash: result.txHash,
+        });
+      } catch (err) {
+        setStatusMsg({
+          type: "error",
+          text: `Settlement failed: ${(err as Error).message || err}`,
+        });
+      } finally {
+        setLoading(false);
+      }
     } else {
       // Start Playback -> Open session first
       if (!authenticated) {
@@ -255,6 +333,21 @@ export default function MediaPlayer() {
 
         setSessionId(res.sessionId);
 
+        // Sign the settlement proof once now — reused at Stop and by the unload safety net, since
+        // no wallet signature is possible during page teardown.
+        const settleNonce = crypto.randomUUID();
+        const settleTimestamp = Date.now();
+        const settleSignature = await signer.signMessage(
+          `AfroMeet settle ${res.sessionId} ${user.wallet.address.toLowerCase()} ${settleNonce} ${settleTimestamp}`,
+        );
+        settleProofRef.current = {
+          sessionId: res.sessionId,
+          listener: user.wallet.address,
+          signature: settleSignature,
+          nonce: settleNonce,
+          timestamp: settleTimestamp,
+        };
+
         // Release + decrypt the gated master for this open session (no double-charge).
         try {
           const contentResponse = await fetch(
@@ -280,7 +373,7 @@ export default function MediaPlayer() {
         setIsPlaying(true);
         setStatusMsg({
           type: "info",
-          text: `Minimum ${selectedWork.minAccessSeconds}s access settled — streaming unlocked.`,
+          text: `Streaming unlocked — first ${selectedWork.minAccessSeconds}s is a free preview, billed per second played when you stop.`,
         });
 
         if (audioRef.current && (selectedWork.category === "music" || selectedWork.category === "film")) {
@@ -306,7 +399,7 @@ export default function MediaPlayer() {
     }
   };
 
-  // Discrete unlock: pay the x402 discovery nanopayment, then decrypt the released master.
+  // Discrete unlock: settle the configured one-time price through escrow, then release the master.
   const handleDiscreteUnlock = async () => {
     if (!selectedWork) return;
     if (!authenticated || !wallets[0]) {
@@ -318,47 +411,38 @@ export default function MediaPlayer() {
     }
     setLoading(true);
     try {
-      // 1. Pay the discovery price directly to the creator (real USDC transfer).
+      if (!user?.wallet?.address) throw new Error("Connect a wallet first");
       const cfg = await fetch(
         `${BACKEND_URL}/access/config/${selectedWork.id}`,
       ).then((r) => r.json());
-      const priceRaw = BigInt(cfg.discoveryPrice || "0");
-      let txHash = "";
-      if (priceRaw > BigInt(0)) {
-        setStatusMsg({
-          type: "info",
-          text: "Paying discovery nanopayment in USDC…",
-        });
-        const signer = await getArcSigner(wallets[0]);
-        const usdc = new ethers.Contract(
-          USDC_ADDRESS,
-          ["function transfer(address to, uint256 amount) returns (bool)"],
-          signer,
-        );
-        const tx = await usdc.transfer(cfg.creator, priceRaw);
-        setStatusMsg({
-          type: "info",
-          text: "Discovery nanopayment transaction broadcasted. Waiting for confirmation…",
-          txHash: tx.hash,
-        });
-        await tx.wait();
-        txHash = tx.hash;
-        setStatusMsg({
-          type: "success",
-          text: "Discovery payment successful on-chain.",
-          txHash: tx.hash,
-        });
-      }
+      const priceRaw = BigInt(cfg.pricePerAccess || "0");
+      if (priceRaw <= 0n) throw new Error("Unlock price is not configured");
 
-      // 2. Fetch the gated content — the backend releases the key only if the payment verifies.
-      setStatusMsg({ type: "info", text: "Unlocking & decrypting content…" });
-      const res = await fetch(`${BACKEND_URL}/access/${selectedWork.id}`, {
-        headers: txHash ? { "X-Payment-Tx": txHash } : {},
+      const signer = await getArcSigner(wallets[0]);
+      setStatusMsg({ type: "info", text: "Approving the one-time unlock payment…" });
+      await ensureAllowance(signer, USDC_ADDRESS, ESCROW_ADDRESS, priceRaw);
+
+      const nonce = crypto.randomUUID();
+      const timestamp = Date.now();
+      const listener = user.wallet.address;
+      const signature = await signer.signMessage(
+        `AfroMeet session ${selectedWork.id} ${listener.toLowerCase()} ${nonce} ${timestamp}`,
+      );
+      const openResponse = await fetch(`${BACKEND_URL}/access/session/open`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenId: selectedWork.id, listener, signature, nonce, timestamp }),
       });
-      if (!res.ok) throw new Error("Payment not verified by the x402 gate");
-      const content = await res.json();
+      if (!openResponse.ok) throw new Error(await openResponse.text());
+      const { sessionId: unlockSessionId } = await openResponse.json();
 
-      // 3. Decrypt locally (key released post-payment) and render.
+      setStatusMsg({ type: "info", text: "Settling unlock price and decrypting content…" });
+      const contentResponse = await fetch(
+        `${BACKEND_URL}/access/session/${unlockSessionId}/content`,
+      );
+      if (!contentResponse.ok) throw new Error(await contentResponse.text());
+      const content = await contentResponse.json();
+
       const unlocked = await resolveGatedContent(content, selectedWork.category);
       setUnlockedContents((prev) => ({ ...prev, [selectedWork.id]: unlocked }));
 
@@ -373,8 +457,7 @@ export default function MediaPlayer() {
 
       setStatusMsg({
         type: "success",
-        text: `Unlocked "${selectedWork.title}" — decrypted from IPFS.`,
-        txHash,
+        text: `Unlocked "${selectedWork.title}" for $${selectedWork.price} USDC.`,
       });
     } catch (err) {
       console.error(err);
@@ -397,6 +480,7 @@ export default function MediaPlayer() {
     setStatusMsg(null);
     setDecryptedUrl(null);
     setDecryptedContent(null);
+    settleProofRef.current = null;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
@@ -765,8 +849,8 @@ export default function MediaPlayer() {
                         Discrete Access Locked
                       </h4>
                       <p className="text-zinc-500 text-xs">
-                        This creative work is protected by the x402 payment
-                        protocol. Pay once to pull full content from IPFS.
+                        Pay the configured one-time unlock price to access the
+                        full encrypted work.
                       </p>
                     </div>
 
@@ -780,7 +864,7 @@ export default function MediaPlayer() {
                       ) : (
                         <Coins className="w-4 h-4" />
                       )}
-                      Unlock for ${selectedWork.discoveryPrice} USDC
+                      Unlock for ${selectedWork.price} USDC
                     </button>
                   </div>
                 )}

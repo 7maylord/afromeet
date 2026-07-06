@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { ethers } from 'ethers';
 import { AccessService } from './access.service';
 import { BlockchainService, AccessConfig } from '../blockchain/blockchain.service';
 import { WalletsService } from '../circle/wallets.service';
@@ -14,9 +15,24 @@ const timedConfig: AccessConfig = {
   active: true,
 };
 
+const discreteConfig: AccessConfig = {
+  pricePerAccess: 500_000n, // $0.50 flat
+  discoveryPrice: 500_000n,
+  ratePerSecond: 0n,
+  mode: 1, // DISCRETE
+  minAccessSeconds: 0n,
+  daoTreasury: '0x00000000000000000000000000000000000000Da',
+  active: true,
+};
+
+const openSession = { listener: '0x00000000000000000000000000000000000000c1', tokenId: 1n, authorisedAmount: 1_000_000n, settled: false };
+
 describe('AccessService', () => {
-  let blockchain: jest.Mocked<Pick<BlockchainService, 'getAccessConfig' | 'getCreator' | 'encodeSettle'>>;
+  let blockchain: jest.Mocked<
+    Pick<BlockchainService, 'getAccessConfig' | 'getCreator' | 'encodeSettle' | 'getSession' | 'getTokenUri'>
+  >;
   let wallets: jest.Mocked<Pick<WalletsService, 'sendContractCall' | 'waitForTransaction'>>;
+  let vault: jest.Mocked<Pick<MediaVaultService, 'get'>>;
   let svc: AccessService;
 
   beforeEach(() => {
@@ -24,6 +40,8 @@ describe('AccessService', () => {
       getAccessConfig: jest.fn().mockResolvedValue(timedConfig),
       getCreator: jest.fn().mockResolvedValue('0x00000000000000000000000000000000000000c0'),
       encodeSettle: jest.fn().mockReturnValue('0xcalldata'),
+      getSession: jest.fn().mockResolvedValue(openSession),
+      getTokenUri: jest.fn().mockResolvedValue('ipfs://Qmwork'),
     };
     wallets = {
       sendContractCall: jest.fn().mockResolvedValue('circle-tx-id'),
@@ -34,12 +52,12 @@ describe('AccessService', () => {
         ({ 'contracts.accessEscrow': '0xESCROW', ipfsGateway: 'https://gw/' } as Record<string, string>)[k],
       ),
     } as unknown as ConfigService;
-    const vault = { get: jest.fn() } as unknown as MediaVaultService;
+    vault = { get: jest.fn().mockResolvedValue(undefined) };
     svc = new AccessService(
       blockchain as unknown as BlockchainService,
       wallets as unknown as WalletsService,
       config,
-      vault,
+      vault as unknown as MediaVaultService,
     );
   });
 
@@ -64,6 +82,103 @@ describe('AccessService', () => {
       expect(blockchain.encodeSettle).toHaveBeenCalledWith('0xsid', 12);
       expect(wallets.sendContractCall).toHaveBeenCalledWith('0xESCROW', '0xcalldata');
       expect(res.txHash).toBe('0xhash');
+    });
+  });
+
+  describe('settleAsListener (signature-authenticated, no operator key)', () => {
+    const wallet = new ethers.Wallet('0x' + '11'.repeat(32));
+    const otherWallet = new ethers.Wallet('0x' + '22'.repeat(32));
+
+    async function signProof(sessionId: string, listener: string, signer: ethers.Wallet, nonce: string, timestamp: number) {
+      return signer.signMessage(`AfroMeet settle ${sessionId} ${listener.toLowerCase()} ${nonce} ${timestamp}`);
+    }
+
+    it('settles when the signature matches both the claimed listener and the on-chain session listener', async () => {
+      blockchain.getSession.mockResolvedValue({ ...openSession, listener: wallet.address });
+      const nonce = 'n1';
+      const timestamp = Date.now();
+      const signature = await signProof('0xsid', wallet.address, wallet, nonce, timestamp);
+
+      const res = await svc.settleAsListener('0xsid', wallet.address, signature, nonce, timestamp, 45);
+      expect(blockchain.encodeSettle).toHaveBeenCalledWith('0xsid', 45);
+      expect(wallets.sendContractCall).toHaveBeenCalledWith('0xESCROW', '0xcalldata');
+      expect(res.txHash).toBe('0xhash');
+    });
+
+    it('rejects when the signer is not the claimed listener', async () => {
+      blockchain.getSession.mockResolvedValue({ ...openSession, listener: wallet.address });
+      const nonce = 'n2';
+      const timestamp = Date.now();
+      // Signed by a different wallet than the `listener` param supplied.
+      const signature = await signProof('0xsid', wallet.address, otherWallet, nonce, timestamp);
+
+      await expect(
+        svc.settleAsListener('0xsid', wallet.address, signature, nonce, timestamp, 45),
+      ).rejects.toThrow('settlement signature does not match listener');
+      expect(wallets.sendContractCall).not.toHaveBeenCalled();
+    });
+
+    it("rejects when the signer isn't the session's actual on-chain listener — can't settle someone else's session", async () => {
+      blockchain.getSession.mockResolvedValue({ ...openSession, listener: otherWallet.address });
+      const nonce = 'n3';
+      const timestamp = Date.now();
+      const signature = await signProof('0xsid', wallet.address, wallet, nonce, timestamp);
+
+      await expect(
+        svc.settleAsListener('0xsid', wallet.address, signature, nonce, timestamp, 45),
+      ).rejects.toThrow('not the listener for this session');
+      expect(wallets.sendContractCall).not.toHaveBeenCalled();
+    });
+
+    it('rejects a reused nonce (replay protection)', async () => {
+      blockchain.getSession.mockResolvedValue({ ...openSession, listener: wallet.address });
+      const nonce = 'n4';
+      const timestamp = Date.now();
+      const signature = await signProof('0xsid', wallet.address, wallet, nonce, timestamp);
+
+      await svc.settleAsListener('0xsid', wallet.address, signature, nonce, timestamp, 45);
+      await expect(
+        svc.settleAsListener('0xsid', wallet.address, signature, nonce, timestamp, 45),
+      ).rejects.toThrow('invalid or reused settlement proof');
+    });
+
+    it('rejects a stale proof (older than the 5-minute window)', async () => {
+      blockchain.getSession.mockResolvedValue({ ...openSession, listener: wallet.address });
+      const nonce = 'n5';
+      const timestamp = Date.now() - 400_000; // 6.6 minutes old
+      const signature = await signProof('0xsid', wallet.address, wallet, nonce, timestamp);
+
+      await expect(
+        svc.settleAsListener('0xsid', wallet.address, signature, nonce, timestamp, 45),
+      ).rejects.toThrow('invalid or reused settlement proof');
+    });
+  });
+
+  describe('sessionContent', () => {
+    it('TIMED: releases the key WITHOUT settling — billed later on stop for real elapsed time', async () => {
+      await svc.sessionContent('0xsid');
+      expect(wallets.sendContractCall).not.toHaveBeenCalled();
+      expect(blockchain.encodeSettle).not.toHaveBeenCalled();
+    });
+
+    it('DISCRETE: settles the flat price immediately, before releasing the key', async () => {
+      blockchain.getAccessConfig.mockResolvedValue(discreteConfig);
+      await svc.sessionContent('0xsid');
+      expect(blockchain.encodeSettle).toHaveBeenCalledWith('0xsid', 0);
+      expect(wallets.sendContractCall).toHaveBeenCalledWith('0xESCROW', '0xcalldata');
+    });
+
+    it('rejects a session that is already settled', async () => {
+      blockchain.getSession.mockResolvedValue({ ...openSession, settled: true });
+      await expect(svc.sessionContent('0xsid')).rejects.toThrow('no open session for this content');
+    });
+
+    it('rejects an unopened session (zero listener)', async () => {
+      blockchain.getSession.mockResolvedValue({
+        ...openSession,
+        listener: '0x0000000000000000000000000000000000000000',
+      });
+      await expect(svc.sessionContent('0xsid')).rejects.toThrow('no open session for this content');
     });
   });
 

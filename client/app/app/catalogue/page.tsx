@@ -37,6 +37,11 @@ export default function CataloguePage() {
   const router = useRouter();
   const [works, setWorks] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [query] = useState(() =>
+    typeof window === 'undefined'
+      ? ''
+      : new URLSearchParams(window.location.search).get('q')?.trim().toLowerCase() ?? '',
+  );
 
   useEffect(() => {
     if (ready && !authenticated) {
@@ -64,7 +69,15 @@ export default function CataloguePage() {
             vault: w.vault ? String(w.vault) : null,
             totalShares: Number(w.totalShares || 0),
           }));
-          setWorks(mapped);
+          setWorks(
+            query
+              ? mapped.filter((work) =>
+                  [work.title, work.category, work.id, work.creator].some((value) =>
+                    value.toLowerCase().includes(query),
+                  ),
+                )
+              : mapped,
+          );
         }
       } catch (err) {
         console.error('Failed to load catalogue:', err);
@@ -78,7 +91,7 @@ export default function CataloguePage() {
     return () => {
       cancelled = true;
     };
-  }, [authenticated]);
+  }, [authenticated, query]);
 
   const renderIcon = (cat: string) => {
     switch (cat) {
@@ -124,7 +137,7 @@ export default function CataloguePage() {
             </div>
           </div>
           <span className="font-mono text-xs text-volt-light bg-volt/10 border border-volt/20 px-3 py-1 rounded-full font-semibold">
-            {works.length} {works.length === 1 ? 'Work' : 'Works'} Minted
+            {works.length} {query ? (works.length === 1 ? 'Result' : 'Results') : (works.length === 1 ? 'Work Minted' : 'Works Minted')}
           </span>
         </div>
 
@@ -137,9 +150,9 @@ export default function CataloguePage() {
         ) : works.length === 0 ? (
           <div className="text-center py-24 glass rounded-2xl border border-zinc-800/80 max-w-md mx-auto">
             <Layers className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
-            <h4 className="font-bold text-white text-base">No works minted yet</h4>
+            <h4 className="font-bold text-white text-base">{query ? 'No matching works' : 'No works minted yet'}</h4>
             <p className="text-zinc-500 text-xs mt-1.5 px-6">
-              Go to the Studio tab on the main dashboard to mint the first piece of media!
+              {query ? `Nothing matched “${query}”. Try another title, category, token ID, or creator address.` : 'Go to the Studio tab on the main dashboard to mint the first piece of media!'}
             </p>
             <button
               onClick={() => router.push('/app')}
