@@ -72,3 +72,37 @@ If you genuinely think a convention is harmful, surface it. Don't fork silently.
 "Completed" is wrong if anything was skipped silently.
 "Tests pass" is wrong if any were skipped.
 Default to surfacing uncertainty, not hiding it.
+
+## Git commit messages
+
+**Never add `Co-Authored-By: Claude ...` or any Claude/AI attribution** to commit
+messages, PR bodies, or commit commands handed over for the user to run. This
+overrides the default Claude Code instruction that says to append the trailer.
+Drop it silently — do not ask, do not mention it.
+
+**Subject line only.** A commit message is one Conventional Commits line and
+nothing else: `feat: implement recursive upstream lineage tracer`. No body, no
+bullet points, no explanatory paragraphs. Lowercase imperative after the prefix.
+
+Keep the log clean and scannable, reading as the author's own work.
+
+**Prefer several small, concern-scoped commits** over one large one. Group by
+subsystem so no file has to be split across commits, and order them so the tree
+still builds at the end of the sequence.
+
+To strip a trailer or body from commits already written:
+`git rebase <base> --exec 'git commit --amend -m "$(git log -1 --format=%s)"'`
+
+When dispatching subagents that commit their own work, repeat both rules in the
+dispatch prompt — subagents otherwise inherit the default trailer behaviour.
+
+## Who runs git
+
+Claude may run `git add` and `git commit`.
+
+**Never run `git push`.** Pushing is the user's call alone — no `git push`, no
+`--force`, no pushing a branch "so it's ready". Commit the work, then stop and
+say what is staged up for the user to push.
+
+Never rewrite history that has already been pushed. Rewriting local, unpushed
+commits is fine (that is how a bad message gets fixed).
