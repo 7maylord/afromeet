@@ -21,12 +21,19 @@ const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FRACTIONAL_VAULT_FACTORY_ADDRESS
 const NFT_ADDRESS = process.env.NEXT_PUBLIC_AFROMEET_NFT_ADDRESS ?? '';
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS ?? '0x3600000000000000000000000000000000000000';
 const EXPLORER_URL = process.env.NEXT_PUBLIC_ARC_EXPLORER ?? 'https://testnet.arcscan.app';
+const ARC_RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC_URL ?? '';
 
 const VAULT_ABI = [
   'function buyShares(uint256 shareAmount)',
   'function claimRevenue() returns (uint256)',
   'function configureSale(uint256 shares, uint256 pricePerShare)',
   'function totalSupply() view returns (uint256)',
+  'function withdrawableRevenueOf(address holder) view returns (uint256)',
+];
+// Canonical deterministic-deployment address — live on Arc testnet.
+const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11';
+const MULTICALL3_ABI = [
+  'function aggregate3(tuple(address target, bool allowFailure, bytes callData)[] calls) payable returns (tuple(bool success, bytes returnData)[] returnData)',
 ];
 const NFT_APPROVE_ABI = ['function approve(address to, uint256 tokenId)'];
 const FACTORY_WRITE_ABI = [
@@ -66,6 +73,8 @@ export default function MarketplacePanel() {
   const [loading, setLoading] = useState<boolean>(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [shareQty, setShareQty] = useState<Record<string, string>>({});
+  // Connected wallet's unclaimed revenue per vault (USDC, 6dp raw), for the claim button label.
+  const [claimable, setClaimable] = useState<Record<string, bigint>>({});
 
   // Configure Sale state – per-card inputs
   const [saleShares, setSaleShares] = useState<Record<string, string>>({});
@@ -134,6 +143,33 @@ export default function MarketplacePanel() {
     loadItems();
   }, [loadItems]);
 
+  // Fetch the connected wallet's unclaimed revenue for every fractionalized vault in one batched
+  // Multicall3 call (read-only, no signer needed) instead of N separate RPC round trips.
+  useEffect(() => {
+    const vaults = items.filter((i) => i.vaultAddress);
+    if (!connectedAddress || vaults.length === 0 || !ARC_RPC_URL) return;
+    const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
+    const vaultIface = new ethers.Interface(VAULT_ABI);
+    const multicall = new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3_ABI, provider);
+
+    const calls = vaults.map((item) => ({
+      target: item.vaultAddress!,
+      allowFailure: true,
+      callData: vaultIface.encodeFunctionData('withdrawableRevenueOf', [connectedAddress]),
+    }));
+    multicall
+      .aggregate3(calls)
+      .then((results: { success: boolean; returnData: string }[]) => {
+        const entries = vaults.map((item, i) => {
+          const r = results[i];
+          const amount = r.success ? (vaultIface.decodeFunctionResult('withdrawableRevenueOf', r.returnData)[0] as bigint) : 0n;
+          return [item.tokenId, amount] as const;
+        });
+        setClaimable(Object.fromEntries(entries));
+      })
+      .catch(() => {});
+  }, [items, connectedAddress]);
+
   async function getSigner() {
     return getArcSigner(wallets[0]);
   }
@@ -196,6 +232,7 @@ export default function MarketplacePanel() {
       setStatusMsg({ type: 'info', text: 'Claim transaction broadcasted. Waiting for confirmation…', txHash: tx.hash });
       await tx.wait();
       setStatusMsg({ type: 'success', text: 'Revenue claimed to your wallet.', txHash: tx.hash });
+      setClaimable((c) => ({ ...c, [item.tokenId]: 0n }));
     } catch (err) {
       setStatusMsg({ type: 'error', text: `Claim failed: ${(err as Error).message?.slice(0, 120) || err}` });
     } finally {
@@ -431,7 +468,9 @@ export default function MarketplacePanel() {
                       ) : (
                         <Coins className="w-3.5 h-3.5 text-emerald-400" />
                       )}
-                      Claim Vault Revenue
+                      {claimable[item.tokenId] && claimable[item.tokenId] > 0n
+                        ? `Claim $${(Number(claimable[item.tokenId]) / 1e6).toFixed(4)} Revenue`
+                        : 'Claim Vault Revenue'}
                     </button>
                   </>
                 ) : (
