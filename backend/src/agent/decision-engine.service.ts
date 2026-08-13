@@ -31,20 +31,25 @@ export class DecisionEngineService {
   private readonly logger = new Logger(DecisionEngineService.name);
   private readonly client: Anthropic | null;
   private readonly model: string;
+  private readonly deepseekKey: string | null;
+  private readonly deepseekModel: string;
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('anthropic.apiKey');
     this.client = apiKey ? new Anthropic({ apiKey }) : null;
     this.model = this.config.get<string>('agent.model')!;
+    // Fallback provider: only used when ANTHROPIC_API_KEY is unset (and vice versa, Anthropic wins if both are set).
+    this.deepseekKey = this.config.get<string>('deepseek.apiKey') ?? null;
+    this.deepseekModel = this.config.get<string>('deepseek.model')!;
   }
 
   isReady(): boolean {
-    return !!this.client;
+    return !!this.client || !!this.deepseekKey;
   }
 
   async evaluate(candidate: CandidateBrief, remainingBudgetUsdc: number): Promise<PatronDecision> {
-    if (!this.client) {
-      return { score: 0, back: false, allocationUsdc: 0, reason: 'ANTHROPIC_API_KEY not set' };
+    if (!this.client && !this.deepseekKey) {
+      return { score: 0, back: false, allocationUsdc: 0, reason: 'no ANTHROPIC_API_KEY or DEEPSEEK_API_KEY set' };
     }
 
     const maxPerWork = this.config.get<number>('agent.maxPerWorkUsdc') ?? 2;
@@ -67,12 +72,7 @@ A high score adds this to the recommendation feed. "back" means the agent also b
 Respond ONLY with JSON: {"score": 0..1, "back": boolean, "allocationUsdc": number, "reason": "<=160 chars"}`;
 
     try {
-      const res = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 300,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      const text = res.content[0]?.type === 'text' ? res.content[0].text : '';
+      const text = this.client ? await this.askAnthropic(prompt) : await this.askDeepseek(prompt);
       const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
       const parsed = JSON.parse(json) as PatronDecision;
 
@@ -87,5 +87,30 @@ Respond ONLY with JSON: {"score": 0..1, "back": boolean, "allocationUsdc": numbe
       this.logger.error(`evaluate failed: ${(err as Error).message}`);
       return { score: 0, back: false, allocationUsdc: 0, reason: 'evaluation error' };
     }
+  }
+
+  private async askAnthropic(prompt: string): Promise<string> {
+    const res = await this.client!.messages.create({
+      model: this.model,
+      max_tokens: 300,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    return res.content[0]?.type === 'text' ? res.content[0].text : '';
+  }
+
+  /** OpenAI-compatible chat completions endpoint — no SDK needed for a single call. */
+  private async askDeepseek(prompt: string): Promise<string> {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.deepseekKey}` },
+      body: JSON.stringify({
+        model: this.deepseekModel,
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!res.ok) throw new Error(`DeepSeek API error: ${res.status} ${await res.text()}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content ?? '';
   }
 }

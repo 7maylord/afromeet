@@ -1,7 +1,10 @@
 export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
   operatorApiKey: process.env.OPERATOR_API_KEY,
-  corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:3001,https://afromeet.vercel.app').split(','),
+  corsOrigins: (
+    process.env.CORS_ORIGINS ??
+    'http://localhost:3001,https://afromeet.vercel.app'
+  ).split(','),
 
   arc: {
     rpcUrl: process.env.ARC_RPC_URL,
@@ -29,6 +32,12 @@ export default () => ({
 
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY,
+  },
+
+  // Fallback judgment provider — used only when ANTHROPIC_API_KEY is unset (see decision-engine.service.ts).
+  deepseek: {
+    apiKey: process.env.DEEPSEEK_API_KEY,
+    model: process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-flash',
   },
 
   services: {

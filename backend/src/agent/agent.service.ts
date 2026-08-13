@@ -92,7 +92,7 @@ export class AgentService {
   async runOnce(): Promise<RunSummary> {
     if (this.running) throw new Error('Agent run already in progress');
     if (!this.wallets.isReady()) throw new Error('Circle wallet not ready');
-    if (!this.decision.isReady()) throw new Error('ANTHROPIC_API_KEY not set');
+    if (!this.decision.isReady()) throw new Error('no ANTHROPIC_API_KEY or DEEPSEEK_API_KEY set');
 
     this.running = true;
     const summary: RunSummary = { budgetUsdc: 0, sampled: 0, liked: [], backed: [], skipped: [] };
