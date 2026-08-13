@@ -64,6 +64,13 @@ export const FRACTIONAL_VAULT_FACTORY_ABI = [
   'function allVaultsLength() view returns (uint256)',
 ];
 
+/** Canonical deterministic-deployment address — live on Arc testnet (verified via eth_getCode). */
+export const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11';
+
+export const MULTICALL3_ABI = [
+  'function aggregate3(tuple(address target, bool allowFailure, bytes callData)[] calls) payable returns (tuple(bool success, bytes returnData)[] returnData)',
+];
+
 export const FRACTIONAL_VAULT_ABI = [
   'function curator() view returns (address)',
   'function withdrawableRevenueOf(address holder) view returns (uint256)',

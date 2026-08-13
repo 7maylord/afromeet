@@ -42,62 +42,37 @@ export class AccessService {
     return { title: null, category: null };
   }
 
-  /** The public catalogue: every active work on-chain with its pricing, tokenURI, title + vault state. */
+  /** The public catalogue: every active work on-chain with its pricing, tokenURI, title + vault state.
+   *  Reads are batched via Multicall3 (2 RPC round trips total, not up to 4×N sequential calls). */
   async catalogue() {
-    const next = Number(await this.blockchain.getNextTokenId());
-    const nftAddr = this.blockchain.nftAddress();
-    const works: unknown[] = [];
-    for (let id = 1; id <= next; id++) {
-      try {
-        const cfg = await this.blockchain.getAccessConfig(id);
-        if (!cfg.active) continue;
-        const [creator, uri] = await Promise.all([
-          this.blockchain.getCreator(id),
-          this.blockchain.getTokenUri(id),
-        ]);
-        const meta = await this.resolveMeta(uri);
+    const entries = await this.blockchain.getCatalogueRaw();
+    const vaultAddresses = entries.flatMap((e) => (e.vault ? [e.vault] : []));
+    const saleInfo = await this.blockchain.getVaultSaleInfoBatch(vaultAddresses);
 
-        let vault: string | null = null;
-        let sharePriceRaw = '0';
-        let sharesForSale = 0;
-        let totalShares = 0;
-        let curator: string | null = null;
-        try {
-          const v = await this.blockchain.getVaultOf(nftAddr, id);
-          if (v && v !== ethers.ZeroAddress) {
-            vault = v;
-            const info = await this.blockchain.getSaleInfo(v);
-            curator = info.curator;
-            sharePriceRaw = info.pricePerShare.toString();
-            sharesForSale = Number(info.sharesForSale);
-            totalShares = Number(info.totalShares);
-          }
-        } catch {
-          /* no vault for this token */
-        }
+    return Promise.all(
+      entries.map(async (e) => {
+        const meta = await this.resolveMeta(e.tokenURI);
+        const info = e.vault ? saleInfo.get(e.vault) : undefined;
 
-        works.push({
-          id: id.toString(),
-          creator,
-          title: meta.title ?? `Work #${id}`,
+        return {
+          id: e.tokenId,
+          creator: e.creator,
+          title: meta.title ?? `Work #${e.tokenId}`,
           category: meta.category,
-          mode: cfg.mode === 0 ? 'TIMED' : 'DISCRETE',
-          pricePerAccessUsdc: Number(cfg.pricePerAccess) / 1e6,
-          discoveryPriceUsdc: Number(cfg.discoveryPrice) / 1e6,
-          ratePerSecondUsdc: Number(cfg.ratePerSecond) / 1e6,
-          minAccessSeconds: Number(cfg.minAccessSeconds),
-          tokenURI: uri,
-          vault,
-          sharePriceRaw,
-          sharesForSale,
-          totalShares,
-          curator,
-        });
-      } catch {
-        /* skip unreadable token */
-      }
-    }
-    return works;
+          mode: e.mode === 0 ? 'TIMED' : 'DISCRETE',
+          pricePerAccessUsdc: Number(e.pricePerAccess) / 1e6,
+          discoveryPriceUsdc: Number(e.discoveryPrice) / 1e6,
+          ratePerSecondUsdc: Number(e.ratePerSecond) / 1e6,
+          minAccessSeconds: Number(e.minAccessSeconds),
+          tokenURI: e.tokenURI,
+          vault: e.vault,
+          sharePriceRaw: (info?.pricePerShare ?? 0n).toString(),
+          sharesForSale: Number(info?.sharesForSale ?? 0n),
+          totalShares: Number(info?.totalShares ?? 0n),
+          curator: info?.curator ?? null,
+        };
+      }),
+    );
   }
 
   /** Public access config for a work (rate, discovery price, mode, creator). */

@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import { AccessService } from './access.service';
-import { BlockchainService, AccessConfig } from '../blockchain/blockchain.service';
+import { BlockchainService, AccessConfig, CatalogueEntry, VaultSaleInfo } from '../blockchain/blockchain.service';
 import { WalletsService } from '../circle/wallets.service';
 import { MediaVaultService } from '../media-vault/media-vault.service';
 
@@ -29,7 +29,16 @@ const openSession = { listener: '0x00000000000000000000000000000000000000c1', to
 
 describe('AccessService', () => {
   let blockchain: jest.Mocked<
-    Pick<BlockchainService, 'getAccessConfig' | 'getCreator' | 'encodeSettle' | 'getSession' | 'getTokenUri'>
+    Pick<
+      BlockchainService,
+      | 'getAccessConfig'
+      | 'getCreator'
+      | 'encodeSettle'
+      | 'getSession'
+      | 'getTokenUri'
+      | 'getCatalogueRaw'
+      | 'getVaultSaleInfoBatch'
+    >
   >;
   let wallets: jest.Mocked<Pick<WalletsService, 'sendContractCall' | 'waitForTransaction'>>;
   let vault: jest.Mocked<Pick<MediaVaultService, 'get'>>;
@@ -42,6 +51,8 @@ describe('AccessService', () => {
       encodeSettle: jest.fn().mockReturnValue('0xcalldata'),
       getSession: jest.fn().mockResolvedValue(openSession),
       getTokenUri: jest.fn().mockResolvedValue('ipfs://Qmwork'),
+      getCatalogueRaw: jest.fn().mockResolvedValue([]),
+      getVaultSaleInfoBatch: jest.fn().mockResolvedValue(new Map()),
     };
     wallets = {
       sendContractCall: jest.fn().mockResolvedValue('circle-tx-id'),
@@ -179,6 +190,61 @@ describe('AccessService', () => {
         listener: '0x0000000000000000000000000000000000000000',
       });
       await expect(svc.sessionContent('0xsid')).rejects.toThrow('no open session for this content');
+    });
+  });
+
+  describe('catalogue (Multicall3-batched)', () => {
+    it('joins vault sale info only onto fractionalized works, by vault address — not by array position', async () => {
+      // Regression guard: a naive positional join would leak token 1's sale info onto token 2
+      // (which has no vault) once a non-fractionalised work sits between two fractionalised ones.
+      const entries: CatalogueEntry[] = [
+        {
+          tokenId: '1',
+          creator: '0xc0',
+          tokenURI: 'ipfs://Qmwork',
+          mode: 0,
+          pricePerAccess: 0n,
+          discoveryPrice: 2000n,
+          ratePerSecond: 100n,
+          minAccessSeconds: 30n,
+          vault: '0xVAULT1',
+        },
+        {
+          tokenId: '2',
+          creator: '0xc1',
+          tokenURI: 'ipfs://Qmwork2',
+          mode: 1,
+          pricePerAccess: 500_000n,
+          discoveryPrice: 500_000n,
+          ratePerSecond: 0n,
+          minAccessSeconds: 0n,
+          vault: null,
+        },
+      ];
+      const saleInfo = new Map<string, VaultSaleInfo>([
+        ['0xVAULT1', { curator: '0xCURATOR', pricePerShare: 1000n, sharesForSale: 500n, totalShares: 10000n }],
+      ]);
+      blockchain.getCatalogueRaw.mockResolvedValue(entries);
+      blockchain.getVaultSaleInfoBatch.mockResolvedValue(saleInfo);
+
+      const works = (await svc.catalogue()) as Array<Record<string, unknown>>;
+
+      // Only the fractionalised tokenId's vault is batched — not every token.
+      expect(blockchain.getVaultSaleInfoBatch).toHaveBeenCalledWith(['0xVAULT1']);
+      expect(works.find((w) => w.id === '1')).toMatchObject({
+        vault: '0xVAULT1',
+        curator: '0xCURATOR',
+        sharePriceRaw: '1000',
+        sharesForSale: 500,
+        totalShares: 10000,
+      });
+      expect(works.find((w) => w.id === '2')).toMatchObject({
+        vault: null,
+        curator: null,
+        sharePriceRaw: '0',
+        sharesForSale: 0,
+        totalShares: 0,
+      });
     });
   });
 

@@ -11,6 +11,8 @@ import {
   FRACTIONAL_VAULT_ABI,
   FRACTIONAL_VAULT_FACTORY_ABI,
   MARKETPLACE_ABI,
+  MULTICALL3_ABI,
+  MULTICALL3_ADDRESS,
   SPLIT_RESOLVER_ABI,
 } from '../config/contracts';
 
@@ -41,6 +43,25 @@ export interface AccessConfig {
   active: boolean;
 }
 
+export interface CatalogueEntry {
+  tokenId: string;
+  creator: string;
+  tokenURI: string;
+  mode: number;
+  pricePerAccess: bigint;
+  discoveryPrice: bigint;
+  ratePerSecond: bigint;
+  minAccessSeconds: bigint;
+  vault: string | null;
+}
+
+export interface VaultSaleInfo {
+  curator: string;
+  pricePerShare: bigint;
+  sharesForSale: bigint;
+  totalShares: bigint;
+}
+
 /**
  * Reads AfroMeet contract state from Arc and encodes calldata for write calls. Writes are not sent
  * from here — they are executed by Circle developer-controlled wallets (see WalletsService), which
@@ -57,6 +78,7 @@ export class BlockchainService implements OnModuleInit {
   private splits!: ethers.Contract;
   private factory!: ethers.Contract;
   private usdc!: ethers.Contract;
+  private multicall3!: ethers.Contract;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -83,6 +105,7 @@ export class BlockchainService implements OnModuleInit {
         FRACTIONAL_VAULT_FACTORY_ABI,
         this.provider,
       );
+    this.multicall3 = new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3_ABI, this.provider);
 
     this.logger.log('BlockchainService ready (read clients initialised)');
   }
@@ -164,6 +187,96 @@ export class BlockchainService implements OnModuleInit {
 
   nftAddress(): string {
     return this.config.get<string>('contracts.afroMeetNft')!;
+  }
+
+  /** Batch read-only calls into one RPC round trip via the canonical Multicall3 deployment.
+   *  Per-call failures (e.g. an unminted tokenId) return '0x' instead of reverting the batch. */
+  private async multicall(calls: { target: string; callData: string }[]): Promise<string[]> {
+    if (calls.length === 0) return [];
+    const results: { success: boolean; returnData: string }[] = await this.multicall3.aggregate3(
+      calls.map((c) => ({ target: c.target, allowFailure: true, callData: c.callData })),
+    );
+    return results.map((r) => (r.success ? r.returnData : '0x'));
+  }
+
+  /**
+   * The full active-work catalogue in a fixed 2 round trips (regardless of how many tokens exist),
+   * replacing what used to be an up-to-4-calls-per-token sequential loop. Callers that also need
+   * vault sale info should follow up with getVaultSaleInfoBatch() for the vault addresses returned here.
+   */
+  async getCatalogueRaw(): Promise<CatalogueEntry[]> {
+    const next = Number(await this.nft.nextTokenId());
+    if (next === 0) return [];
+    const nftAddr = this.nftAddress();
+
+    const registryIface = new ethers.Interface(ACCESS_REGISTRY_ABI);
+    const nftIface = new ethers.Interface(AFROMEET_NFT_ABI);
+    const factoryIface = new ethers.Interface(FRACTIONAL_VAULT_FACTORY_ABI);
+
+    const calls: { target: string; callData: string }[] = [];
+    for (let id = 1; id <= next; id++) {
+      calls.push(
+        { target: this.registry.target as string, callData: registryIface.encodeFunctionData('getConfig', [id]) },
+        { target: nftAddr, callData: nftIface.encodeFunctionData('creatorOf', [id]) },
+        { target: nftAddr, callData: nftIface.encodeFunctionData('tokenURI', [id]) },
+        { target: this.factory.target as string, callData: factoryIface.encodeFunctionData('vaultOf', [nftAddr, id]) },
+      );
+    }
+    const raw = await this.multicall(calls);
+
+    const out: CatalogueEntry[] = [];
+    for (let i = 0; i < next; i++) {
+      const [cfgData, creatorData, uriData, vaultData] = raw.slice(i * 4, i * 4 + 4);
+      if (cfgData === '0x' || creatorData === '0x' || uriData === '0x') continue; // unminted/unreadable token
+
+      const cfg = registryIface.decodeFunctionResult('getConfig', cfgData)[0];
+      if (!cfg.active) continue;
+
+      const vault =
+        vaultData !== '0x' ? (factoryIface.decodeFunctionResult('vaultOf', vaultData)[0] as string) : ethers.ZeroAddress;
+
+      out.push({
+        tokenId: (i + 1).toString(),
+        creator: nftIface.decodeFunctionResult('creatorOf', creatorData)[0] as string,
+        tokenURI: nftIface.decodeFunctionResult('tokenURI', uriData)[0] as string,
+        mode: Number(cfg.mode),
+        pricePerAccess: cfg.pricePerAccess,
+        discoveryPrice: cfg.discoveryPrice,
+        ratePerSecond: cfg.ratePerSecond,
+        minAccessSeconds: cfg.minAccessSeconds,
+        vault: vault !== ethers.ZeroAddress ? vault : null,
+      });
+    }
+    return out;
+  }
+
+  /** Sale info for many vaults in a single Multicall3 round trip. */
+  async getVaultSaleInfoBatch(vaultAddresses: string[]): Promise<Map<string, VaultSaleInfo>> {
+    const out = new Map<string, VaultSaleInfo>();
+    if (vaultAddresses.length === 0) return out;
+
+    const iface = new ethers.Interface(FRACTIONAL_VAULT_ABI);
+    const calls: { target: string; callData: string }[] = [];
+    for (const v of vaultAddresses) {
+      calls.push(
+        { target: v, callData: iface.encodeFunctionData('curator') },
+        { target: v, callData: iface.encodeFunctionData('saleSharePrice') },
+        { target: v, callData: iface.encodeFunctionData('sharesForSale') },
+        { target: v, callData: iface.encodeFunctionData('totalSupply') },
+      );
+    }
+    const raw = await this.multicall(calls);
+
+    vaultAddresses.forEach((v, i) => {
+      const [curatorData, priceData, forSaleData, supplyData] = raw.slice(i * 4, i * 4 + 4);
+      out.set(v, {
+        curator: curatorData !== '0x' ? (iface.decodeFunctionResult('curator', curatorData)[0] as string) : ethers.ZeroAddress,
+        pricePerShare: priceData !== '0x' ? (iface.decodeFunctionResult('saleSharePrice', priceData)[0] as bigint) : 0n,
+        sharesForSale: forSaleData !== '0x' ? (iface.decodeFunctionResult('sharesForSale', forSaleData)[0] as bigint) : 0n,
+        totalShares: supplyData !== '0x' ? (iface.decodeFunctionResult('totalSupply', supplyData)[0] as bigint) : 0n,
+      });
+    });
+    return out;
   }
 
   // --- Governance + earnings reads ------------------------------------------
