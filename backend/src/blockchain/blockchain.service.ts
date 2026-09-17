@@ -193,7 +193,9 @@ export class BlockchainService implements OnModuleInit {
    *  Per-call failures (e.g. an unminted tokenId) return '0x' instead of reverting the batch. */
   private async multicall(calls: { target: string; callData: string }[]): Promise<string[]> {
     if (calls.length === 0) return [];
-    const results: { success: boolean; returnData: string }[] = await this.multicall3.aggregate3(
+    // aggregate3 is declared `payable`, not `view` — .staticCall forces an eth_call (read) instead
+    // of ethers defaulting to a transaction-send, which a read-only Provider can't do anyway.
+    const results: { success: boolean; returnData: string }[] = await this.multicall3.aggregate3.staticCall(
       calls.map((c) => ({ target: c.target, allowFailure: true, callData: c.callData })),
     );
     return results.map((r) => (r.success ? r.returnData : '0x'));

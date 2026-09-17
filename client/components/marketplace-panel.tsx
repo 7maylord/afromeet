@@ -157,8 +157,8 @@ export default function MarketplacePanel() {
       allowFailure: true,
       callData: vaultIface.encodeFunctionData('withdrawableRevenueOf', [connectedAddress]),
     }));
-    multicall
-      .aggregate3(calls)
+    multicall.aggregate3
+      .staticCall(calls)
       .then((results: { success: boolean; returnData: string }[]) => {
         const entries = vaults.map((item, i) => {
           const r = results[i];
