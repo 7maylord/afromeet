@@ -93,18 +93,10 @@ export class BlockchainService implements OnModuleInit {
     const c = this.config.get<Record<string, string>>('contracts')!;
     this.usdc = new ethers.Contract(c.usdc, ERC20_ABI, this.provider);
     if (c.afroMeetNft) this.nft = new ethers.Contract(c.afroMeetNft, AFROMEET_NFT_ABI, this.provider);
-    if (c.accessRegistry)
-      this.registry = new ethers.Contract(c.accessRegistry, ACCESS_REGISTRY_ABI, this.provider);
-    if (c.accessEscrow)
-      this.escrow = new ethers.Contract(c.accessEscrow, ACCESS_ESCROW_ABI, this.provider);
-    if (c.splitResolver)
-      this.splits = new ethers.Contract(c.splitResolver, SPLIT_RESOLVER_ABI, this.provider);
-    if (c.fractionalVaultFactory)
-      this.factory = new ethers.Contract(
-        c.fractionalVaultFactory,
-        FRACTIONAL_VAULT_FACTORY_ABI,
-        this.provider,
-      );
+    if (c.accessRegistry) this.registry = new ethers.Contract(c.accessRegistry, ACCESS_REGISTRY_ABI, this.provider);
+    if (c.accessEscrow) this.escrow = new ethers.Contract(c.accessEscrow, ACCESS_ESCROW_ABI, this.provider);
+    if (c.splitResolver) this.splits = new ethers.Contract(c.splitResolver, SPLIT_RESOLVER_ABI, this.provider);
+    if (c.fractionalVaultFactory) this.factory = new ethers.Contract(c.fractionalVaultFactory, FRACTIONAL_VAULT_FACTORY_ABI, this.provider);
     this.multicall3 = new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3_ABI, this.provider);
 
     this.logger.log('BlockchainService ready (read clients initialised)');
@@ -129,23 +121,29 @@ export class BlockchainService implements OnModuleInit {
    * ponytail: in-memory cache → one backfill per process boot. Persist to Mongo if restarts
    * during judging become costly.
    */
-  private async syncLogs(
-    key: string,
-    address: string,
-    topics: (string | string[] | null)[],
-  ): Promise<ethers.Log[]> {
+  private async syncLogs(key: string, address: string, topics: (string | string[] | null)[]): Promise<ethers.Log[]> {
     const latest = await this.provider.getBlockNumber();
-    const entry =
-      this.logCache.get(key) ??
-      { logs: [] as ethers.Log[], cursor: BlockchainService.DEPLOY_BLOCK - 1 };
+    const entry = this.logCache.get(key) ?? {
+      logs: [] as ethers.Log[],
+      cursor: BlockchainService.DEPLOY_BLOCK - 1,
+    };
 
-    for (
-      let from = entry.cursor + 1;
-      from <= latest;
-      from += BlockchainService.MAX_LOG_RANGE + 1
-    ) {
+    for (let from = entry.cursor + 1; from <= latest; from += BlockchainService.MAX_LOG_RANGE + 1) {
       const to = Math.min(from + BlockchainService.MAX_LOG_RANGE, latest);
-      const logs = await this.provider.getLogs({ address, topics, fromBlock: from, toBlock: to });
+      let logs: ethers.Log[];
+      try {
+        logs = await this.provider.getLogs({
+          address,
+          topics,
+          fromBlock: from,
+          toBlock: to,
+        });
+      } catch (error) {
+        const rpcError = error as { error?: { message?: string } };
+        const message = rpcError.error?.message ?? (error instanceof Error ? error.message : String(error));
+        this.logger.warn(`Log sync failed for ${address} (${from}-${to}): ${message}`);
+        return entry.logs;
+      }
       entry.logs.push(...logs);
       entry.cursor = to;
     }
@@ -196,7 +194,11 @@ export class BlockchainService implements OnModuleInit {
     // aggregate3 is declared `payable`, not `view` — .staticCall forces an eth_call (read) instead
     // of ethers defaulting to a transaction-send, which a read-only Provider can't do anyway.
     const results: { success: boolean; returnData: string }[] = await this.multicall3.aggregate3.staticCall(
-      calls.map((c) => ({ target: c.target, allowFailure: true, callData: c.callData })),
+      calls.map((c) => ({
+        target: c.target,
+        allowFailure: true,
+        callData: c.callData,
+      })),
     );
     return results.map((r) => (r.success ? r.returnData : '0x'));
   }
@@ -218,10 +220,22 @@ export class BlockchainService implements OnModuleInit {
     const calls: { target: string; callData: string }[] = [];
     for (let id = 1; id <= next; id++) {
       calls.push(
-        { target: this.registry.target as string, callData: registryIface.encodeFunctionData('getConfig', [id]) },
-        { target: nftAddr, callData: nftIface.encodeFunctionData('creatorOf', [id]) },
-        { target: nftAddr, callData: nftIface.encodeFunctionData('tokenURI', [id]) },
-        { target: this.factory.target as string, callData: factoryIface.encodeFunctionData('vaultOf', [nftAddr, id]) },
+        {
+          target: this.registry.target as string,
+          callData: registryIface.encodeFunctionData('getConfig', [id]),
+        },
+        {
+          target: nftAddr,
+          callData: nftIface.encodeFunctionData('creatorOf', [id]),
+        },
+        {
+          target: nftAddr,
+          callData: nftIface.encodeFunctionData('tokenURI', [id]),
+        },
+        {
+          target: this.factory.target as string,
+          callData: factoryIface.encodeFunctionData('vaultOf', [nftAddr, id]),
+        },
       );
     }
     const raw = await this.multicall(calls);
@@ -234,8 +248,7 @@ export class BlockchainService implements OnModuleInit {
       const cfg = registryIface.decodeFunctionResult('getConfig', cfgData)[0];
       if (!cfg.active) continue;
 
-      const vault =
-        vaultData !== '0x' ? (factoryIface.decodeFunctionResult('vaultOf', vaultData)[0] as string) : ethers.ZeroAddress;
+      const vault = vaultData !== '0x' ? (factoryIface.decodeFunctionResult('vaultOf', vaultData)[0] as string) : ethers.ZeroAddress;
 
       out.push({
         tokenId: (i + 1).toString(),
@@ -283,11 +296,19 @@ export class BlockchainService implements OnModuleInit {
 
   // --- Governance + earnings reads ------------------------------------------
 
-  async ecosystemOf(
-    creator: string,
-  ): Promise<{ token: string; dao: string; treasury: string; exists: boolean }> {
+  async ecosystemOf(creator: string): Promise<{
+    token: string;
+    dao: string;
+    treasury: string;
+    exists: boolean;
+  }> {
     const e = await this.nft.ecosystemOf(creator);
-    return { token: e.token, dao: e.dao, treasury: e.treasury, exists: e.exists };
+    return {
+      token: e.token,
+      dao: e.dao,
+      treasury: e.treasury,
+      exists: e.exists,
+    };
   }
 
   /** TokenIds created by `creator` (small catalogues only — linear scan). */
@@ -338,11 +359,7 @@ export class BlockchainService implements OnModuleInit {
     const marketIface = new ethers.Interface(MARKETPLACE_ABI);
     const nftIface = new ethers.Interface(AFROMEET_NFT_ABI);
     const transferTopic = ethers.id('Transfer(address,address,uint256)');
-    const bought = await this.syncLogs(
-      `bought:${marketplace}`,
-      marketplace,
-      [marketIface.getEvent('Bought')!.topicHash],
-    );
+    const bought = await this.syncLogs(`bought:${marketplace}`, marketplace, [marketIface.getEvent('Bought')!.topicHash]);
     const wanted = new Set(tokenIds.map(BigInt));
     const recipient = creator.toLowerCase();
     let total = 0n;
@@ -365,7 +382,8 @@ export class BlockchainService implements OnModuleInit {
           entry.topics[0] === transferTopic &&
           entry.topics.length >= 3 &&
           `0x${entry.topics[2].slice(26)}`.toLowerCase() === recipient
-        ) total += BigInt(entry.data);
+        )
+          total += BigInt(entry.data);
       }
     }
     return total;
@@ -441,31 +459,18 @@ export class BlockchainService implements OnModuleInit {
   // --- Governance calldata (signed client-side by the voter/proposer) -------
 
   encodeCastVote(proposalId: string, support: number): string {
-    return new ethers.Interface(CREATOR_DAO_ABI).encodeFunctionData('castVote', [
-      proposalId,
-      support,
-    ]);
+    return new ethers.Interface(CREATOR_DAO_ABI).encodeFunctionData('castVote', [proposalId, support]);
   }
 
   encodePropose(targets: string[], values: bigint[], calldatas: string[], description: string): string {
-    return new ethers.Interface(CREATOR_DAO_ABI).encodeFunctionData('propose', [
-      targets,
-      values,
-      calldatas,
-      description,
-    ]);
+    return new ethers.Interface(CREATOR_DAO_ABI).encodeFunctionData('propose', [targets, values, calldatas, description]);
   }
 
   encodeQueueDisbursement(to: string, amount: bigint): string {
-    return new ethers.Interface(DAO_TREASURY_ABI).encodeFunctionData('queueDisbursement', [
-      to,
-      amount,
-    ]);
+    return new ethers.Interface(DAO_TREASURY_ABI).encodeFunctionData('queueDisbursement', [to, amount]);
   }
 
-  async getSplits(
-    tokenId: bigint | number | string,
-  ): Promise<{ recipient: string; basisPoints: bigint }[]> {
+  async getSplits(tokenId: bigint | number | string): Promise<{ recipient: string; basisPoints: bigint }[]> {
     const res = await this.splits.getSplits(tokenId);
     return res.map((s: { recipient: string; basisPoints: bigint }) => ({
       recipient: s.recipient,
@@ -482,9 +487,12 @@ export class BlockchainService implements OnModuleInit {
     return vault.withdrawableRevenueOf(holder);
   }
 
-  async getSaleInfo(
-    vaultAddress: string,
-  ): Promise<{ curator: string; pricePerShare: bigint; sharesForSale: bigint; totalShares: bigint }> {
+  async getSaleInfo(vaultAddress: string): Promise<{
+    curator: string;
+    pricePerShare: bigint;
+    sharesForSale: bigint;
+    totalShares: bigint;
+  }> {
     const vault = new ethers.Contract(vaultAddress, FRACTIONAL_VAULT_ABI, this.provider);
     const [curator, pricePerShare, sharesForSale, totalShares] = await Promise.all([
       vault.curator(),
@@ -495,9 +503,12 @@ export class BlockchainService implements OnModuleInit {
     return { curator, pricePerShare, sharesForSale, totalShares };
   }
 
-  async getSession(
-    sessionId: string,
-  ): Promise<{ listener: string; tokenId: bigint; authorisedAmount: bigint; settled: boolean }> {
+  async getSession(sessionId: string): Promise<{
+    listener: string;
+    tokenId: bigint;
+    authorisedAmount: bigint;
+    settled: boolean;
+  }> {
     const s = await this.escrow.sessions(sessionId);
     return {
       listener: s.listener,
@@ -521,25 +532,12 @@ export class BlockchainService implements OnModuleInit {
 
   // --- Calldata encoders (executed via Circle wallets) ----------------------
 
-  encodeOpenSession(
-    sessionId: string,
-    listener: string,
-    tokenId: bigint | number | string,
-    authorisedAmount: bigint,
-  ): string {
-    return new ethers.Interface(ACCESS_ESCROW_ABI).encodeFunctionData('openSession', [
-      sessionId,
-      listener,
-      tokenId,
-      authorisedAmount,
-    ]);
+  encodeOpenSession(sessionId: string, listener: string, tokenId: bigint | number | string, authorisedAmount: bigint): string {
+    return new ethers.Interface(ACCESS_ESCROW_ABI).encodeFunctionData('openSession', [sessionId, listener, tokenId, authorisedAmount]);
   }
 
   encodeSettle(sessionId: string, elapsedSeconds: number): string {
-    return new ethers.Interface(ACCESS_ESCROW_ABI).encodeFunctionData('settle', [
-      sessionId,
-      elapsedSeconds,
-    ]);
+    return new ethers.Interface(ACCESS_ESCROW_ABI).encodeFunctionData('settle', [sessionId, elapsedSeconds]);
   }
 
   encodeUsdcApprove(spender: string, amount: bigint): string {
@@ -578,9 +576,6 @@ export class BlockchainService implements OnModuleInit {
   }
 
   encodeConfigureSale(shares: bigint, pricePerShare: bigint): string {
-    return new ethers.Interface(FRACTIONAL_VAULT_ABI).encodeFunctionData('configureSale', [
-      shares,
-      pricePerShare,
-    ]);
+    return new ethers.Interface(FRACTIONAL_VAULT_ABI).encodeFunctionData('configureSale', [shares, pricePerShare]);
   }
 }
